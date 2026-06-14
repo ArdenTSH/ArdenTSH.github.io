@@ -3,11 +3,14 @@
 // text (edit it in src/config/site.ts), then one island per research direction.
 import PageShell from "../layouts/PageShell.astro";
 import Island from "../components/Island.astro";
+import BlackHole from "../components/BlackHole.astro";
 import { Icon } from "astro-icon/components";
 import { researchAreas, site } from "../config/site";
 ---
 
 <PageShell title={site.name} active="home">
+  <BlackHole slot="background" />
+
   <Island as="header">
     <p class="eyebrow">{site.eyebrow}</p>
     <h1>{site.name}</h1>

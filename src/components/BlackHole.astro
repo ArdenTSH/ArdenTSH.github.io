@@ -1,0 +1,40 @@
+---
+// Accreting black-hole home background (Phase 3.5).
+// Vendored MIT renderer (Adriwin06/black-hole, a fork of oseiskar/black-hole) in
+// public/blackhole/ — see public/blackhole/LICENSE and COPYRIGHT.md for credit.
+// The one non-MIT asset (the Milky-Way sky) was replaced with a procedurally
+// generated CC0 starfield, so the whole thing is redistributable.
+//
+// Loaded — and made interactive (drag the empty margins to orbit) — on DESKTOP
+// only, and skipped under reduced-motion, to protect mobile performance and
+// accessibility. Elsewhere the page simply shows its plain dark background.
+---
+
+<iframe
+  class="bh-bg"
+  data-src="/blackhole/index.html"
+  title=""
+  aria-hidden="true"
+  tabindex="-1"
+  scrolling="no"></iframe>
+
+<script>
+  const frame = document.querySelector<HTMLIFrameElement>("iframe.bh-bg");
+  const wide = window.matchMedia("(min-width: 900px)");
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+  if (frame && frame.dataset.src && wide.matches && !reduce.matches) {
+    frame.src = frame.dataset.src;
+  }
+</script>
+
+<style>
+  .bh-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    /* Interactive: visitors drag the empty margins to orbit the black hole. */
+    pointer-events: auto;
+  }
+</style>

@@ -8,3 +8,6 @@ dist/
 .claude/
 CLAUDE.md
 PLAN.md
+
+# The vendored black-hole renderer (public/blackhole/) now ships — MIT-licensed
+# (see its LICENSE / COPYRIGHT.md); the non-MIT sky was replaced with a CC0 starfield.

@@ -48,6 +48,12 @@ const { title, description, active = "" } = Astro.props;
     min-height: 100svh;
     /* clear the fixed bottom dock */
     padding-bottom: calc(var(--space-9) + env(safe-area-inset-bottom, 0px));
+    /* Let pointer drags fall through the empty gaps to the background so the
+       black hole is orbit-draggable; islands and links stay interactive. */
+    pointer-events: none;
+  }
+  .page :where(a[href], button, input, textarea, select, label, summary, [tabindex], .island) {
+    pointer-events: auto;
   }
   /* One centred column; every direct child (an island) is the same width. */
   .column {
@@ -76,3 +82,40 @@ const { title, description, active = "" } = Astro.props;
     margin-top: var(--space-7);
   }
 </style>
+
+<script>
+  // Curved "spherical" scroll (Phase 3.7): each island tilts toward a shared
+  // horizon as you scroll and flattens as it passes the viewport centre — the
+  // gentle feel of scrolling along the surface of a sphere. Disabled under
+  // reduced-motion. Pure CSS transforms, so layout and scrolling are unaffected.
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const column = document.querySelector(".column");
+  if (column && !reduceMotion.matches) {
+    const items = Array.from(column.children) as HTMLElement[];
+    const MAX_ANGLE = 18; // degrees of tilt toward the viewport edges (edit me to taste)
+    let ticking = false;
+    const apply = () => {
+      const vh = window.innerHeight || 1;
+      const mid = vh / 2;
+      for (const el of items) {
+        const rect = el.getBoundingClientRect();
+        const centre = rect.top + rect.height / 2;
+        const d = Math.max(-1, Math.min(1, (centre - mid) / vh)); // -1..1
+        const angle = (-d * MAX_ANGLE).toFixed(2);
+        const scale = (1 - Math.abs(d) * 0.04).toFixed(3);
+        el.style.transform = `perspective(1500px) rotateX(${angle}deg) scale(${scale})`;
+        el.style.opacity = (1 - Math.abs(d) * 0.18).toFixed(3);
+      }
+      ticking = false;
+    };
+    const onScroll = () => {
+      if (!ticking) {
+        ticking = true;
+        requestAnimationFrame(apply);
+      }
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    apply();
+  }
+</script>
