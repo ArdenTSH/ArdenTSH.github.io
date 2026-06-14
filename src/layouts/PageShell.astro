@@ -6,6 +6,7 @@
 // slot (the home MNIST strip lands there), and the persistent Dock on top.
 import Layout from "./Layout.astro";
 import Dock from "../components/Dock.astro";
+import ModeToggle from "../components/ModeToggle.astro";
 
 interface Props {
   title: string;
@@ -31,6 +32,7 @@ const { title, description, active = "" } = Astro.props;
   </div>
 
   <Dock active={active} />
+  <ModeToggle />
 </Layout>
 
 <style>

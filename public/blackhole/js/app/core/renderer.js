@@ -20,6 +20,8 @@ var distanceController = null;
 var refreshAllControllersGlobal = null; // Will be set in setupGUI
 var bloomPass = null;
 var taaPass = null;
+var sketchPass = null;
+var DEFAULT_RENDER_STYLE = 'photoreal'; // 'photoreal' | 'sketch'
 var shaderUniforms = null;
 var baseDevicePixelRatio = Math.max(window.devicePixelRatio || 1.0, 1.0);
 var isMobileClient = false;
@@ -1223,6 +1225,7 @@ function init(glslSource, textures) {
     bloomPass = setupBloom();
     // ============== END BLOOM ==============
     taaPass = setupTemporalAA();
+    sketchPass = setupSketch();
 
     stats = new Stats();
     stats.domElement.style.position = 'fixed';
@@ -1275,6 +1278,29 @@ function init(glslSource, textures) {
 
     setupGUI();
     beginQualityBenchmarkIfNeeded();
+
+    // ===== Render-style toggle (photoreal | sketch) — no shader recompile =====
+    function setRenderStyle(style) {
+        style = (style === 'sketch') ? 'sketch' : 'photoreal';
+        if (!shader) return;
+        if (shader.parameters.render_style === style) return;
+        shader.parameters.render_style = style;
+        if (taaPass) taaPass.reset();
+        shader.needsUpdate = true; // force an immediate redraw through the lazy gate
+    }
+    window.blackHoleSetStyle = setRenderStyle;
+    try {
+        var styleFromUrl = new URLSearchParams(window.location.search).get('style');
+        if (styleFromUrl === 'sketch') setRenderStyle('sketch');
+        else if (DEFAULT_RENDER_STYLE === 'sketch') setRenderStyle('sketch');
+    } catch (e) {}
+    window.addEventListener('message', function (ev) {
+        if (ev.source !== window.parent) return;
+        var d = ev.data;
+        if (d && d.type === 'bh:setStyle' && (d.style === 'sketch' || d.style === 'photoreal')) {
+            setRenderStyle(d.style);
+        }
+    });
 }
 
 // ─── Dive Animation Functions ───────────────────────────────────────────────
@@ -1891,6 +1917,7 @@ function resizeRendererAndPasses() {
 
     if (bloomPass) bloomPass.resize(w, h);
     if (taaPass) taaPass.resize(w, h);
+    if (sketchPass) sketchPass.resize(w, h);
 }
 
 applyRenderScaleFromSettings = function() {
@@ -2062,6 +2089,23 @@ function renderSceneToTarget(target) {
 }
 
 function render() {
+    // ---- NPR sketch path: replaces bloom + TAA with the notebook pass --------
+    // Renders the raytrace mesh directly into sketchPass.sceneRT (clean LDR, no
+    // bloom/TAA/jitter), then runs the sketch post pass to screen. Does NOT touch
+    // bloom.enabled / taa_enabled, so toggling back to photoreal is exact.
+    if (shader.parameters.render_style === 'sketch' && sketchPass) {
+        if (shaderUniforms && shaderUniforms.taa_jitter) {
+            shaderUniforms.taa_jitter.value.set(0, 0);
+        }
+        updateUniforms();
+        renderer.render(scene, camera, sketchPass.sceneRT, true);
+        sketchPass.syncParams(shader.parameters.sketch);
+        sketchPass.render(renderer, observer.time);
+        if (taaPass && taaPass.historyValid) taaPass.reset();
+        lastTaaCameraMat.copy(camera.matrixWorldInverse);
+        updateAxesGizmo();
+        return;
+    }
     var taaEnabled = !!shader.parameters.taa_enabled && !!taaPass;
     if (shaderUniforms && shaderUniforms.taa_jitter) {
         if (taaEnabled) {
@@ -2114,6 +2158,7 @@ if (typeof window !== 'undefined') {
             var rh = renderer.domElement.height;
             if (bloomPass) bloomPass.resize(rw, rh);
             if (taaPass) taaPass.resize(rw, rh);
+            if (sketchPass) sketchPass.resize(rw, rh);
             // Match the Three.js camera's projection aspect to the recording resolution
             // so that world→screen projection (used by annotation anchor points) is
             // consistent with what the raytracer shader actually renders.

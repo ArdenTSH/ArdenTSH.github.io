@@ -84,6 +84,22 @@ function Shader(mustacheTemplate) {
             threshold: 0.65,
             radius: 0.85
         },
+        // Render style: 'photoreal' (original pipeline) or 'sketch' (NPR notebook).
+        // Pure JS-side runtime switch — never recompiles the ray-tracer.
+        render_style: 'photoreal',
+        sketch: {
+            paper:           [0.94, 0.90, 0.82], // tan/cream paper
+            ink:             [0.24, 0.18, 0.13], // sepia-brown ink
+            ink_strength:    0.80,
+            edge_threshold:  0.07,
+            edge_softness:   0.10,
+            sepia_amount:    0.50,
+            hatch_amount:    0.28,
+            hatch_scale:     6.0,
+            paper_grain:     0.05,
+            line_width:      1.3,
+            overall_strength:0.85
+        },
         planet: {
             enabled: true,
             distance: 14.0,

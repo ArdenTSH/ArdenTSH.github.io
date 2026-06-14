@@ -22,9 +22,22 @@
   const frame = document.querySelector<HTMLIFrameElement>("iframe.bh-bg");
   const wide = window.matchMedia("(min-width: 900px)");
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+  // Default view is the notebook (sketch); the "real" mode loads photoreal.
+  let mode = "notebook";
+  try { mode = localStorage.getItem("bh-mode") || "notebook"; } catch (e) {}
+  const style = mode === "real" ? "photoreal" : "sketch";
   if (frame && frame.dataset.src && wide.matches && !reduce.matches) {
-    frame.src = frame.dataset.src;
+    frame.src = frame.dataset.src + "?style=" + style;
   }
+
+  // Live style toggle from the parent page (iframe is same-origin).
+  // A site button can call:  window.bhSetStyle('sketch') / window.bhSetStyle('photoreal')
+  (window as any).bhSetStyle = (style: "sketch" | "photoreal") => {
+    if (!frame || !frame.contentWindow) return;
+    const w = frame.contentWindow as any;
+    if (typeof w.blackHoleSetStyle === "function") w.blackHoleSetStyle(style);
+    else frame.contentWindow.postMessage({ type: "bh:setStyle", style }, location.origin);
+  };
 </script>
 
 <style>

@@ -1,0 +1,78 @@
+---
+// Mode toggle (notebook ⇄ real). Notebook = cream paper + the sketched black
+// hole (the default); "real" = dark theme + the photoreal black hole. The
+// choice is global, persisted in localStorage ("bh-mode"), and applied before
+// paint in Layout. On the home page it also flips the black-hole render style
+// via window.bhSetStyle (defined by BlackHole.astro); elsewhere it just flips
+// the theme.
+---
+
+<button
+  type="button"
+  class="mode-toggle"
+  aria-label="Switch between the notebook view and the real view"
+>
+  <span class="mode-toggle__label" data-mode-label>see it for real</span>
+</button>
+
+<style>
+  .mode-toggle {
+    position: fixed;
+    top: calc(var(--space-4) + env(safe-area-inset-top, 0px));
+    right: var(--space-4);
+    z-index: var(--z-dock);
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 13px;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-label);
+    color: var(--text-secondary);
+    background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
+    border: var(--hairline) solid var(--border-strong);
+    border-radius: var(--radius-pill);
+    box-shadow: var(--shadow-dock);
+    cursor: pointer;
+    transition:
+      color var(--dur-fast) var(--ease-standard),
+      border-color var(--dur-fast) var(--ease-standard);
+  }
+  .mode-toggle:hover {
+    color: var(--text-primary);
+    border-color: var(--accent-line);
+  }
+  .mode-toggle:focus-visible {
+    outline: none;
+    box-shadow: var(--ring);
+  }
+</style>
+
+<script>
+  const btn = document.querySelector<HTMLButtonElement>(".mode-toggle");
+  const label = document.querySelector<HTMLElement>("[data-mode-label]");
+  const getMode = () => {
+    try {
+      return localStorage.getItem("bh-mode") || "notebook";
+    } catch (e) {
+      return "notebook";
+    }
+  };
+  // The label says what a click will switch TO.
+  const renderLabel = (mode: string) => {
+    if (label) label.textContent = mode === "real" ? "the notebook" : "see it for real";
+  };
+  renderLabel(getMode());
+  btn?.addEventListener("click", () => {
+    const next = getMode() === "real" ? "notebook" : "real";
+    try {
+      localStorage.setItem("bh-mode", next);
+    } catch (e) {}
+    document.documentElement.setAttribute("data-theme", next === "real" ? "dark" : "notebook");
+    const w = window as any;
+    if (typeof w.bhSetStyle === "function") {
+      w.bhSetStyle(next === "real" ? "photoreal" : "sketch");
+    }
+    renderLabel(next);
+  });
+</script>

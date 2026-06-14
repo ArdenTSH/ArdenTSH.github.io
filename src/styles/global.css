@@ -272,6 +272,51 @@
   }
 }
 
+/* ---- Colour: NOTEBOOK theme (the SITE DEFAULT) -------------------------
+   A physicist's notebook: warm tan/cream paper, ivory "sheet" island cards,
+   sepia ink text, a sepia-brown accent. Pairs with the sketch black-hole
+   background. Set as default via <html data-theme="notebook"> (Layout); the
+   dark :root theme is the "real" / photoreal view reached from the toggle. */
+:root[data-theme="notebook"] {
+  --bg:             #efe5cf;  /* paper desk — matches the sketch paper */
+  --surface:        #f8f2e3;  /* island = a lighter sheet of paper */
+  --surface-alt:    #f1e9d6;
+  --surface-raised: #fdf8ec;
+
+  --border:         #d9ccae;
+  --border-strong:  #c7b793;
+  --border-faint:   #e7ddc6;
+
+  --text-primary:   #2a2317;  /* ink — ~13:1 on --surface */
+  --text-secondary: #54493a;  /* ~7:1 */
+  --text-muted:     #6d6249;  /* ~5:1 (AA) */
+  --text-faint:     #9a8f76;  /* decorative only */
+
+  --accent:         #7a5224;  /* sepia-brown ink (links, eyebrow) — ~6.4:1 */
+  --accent-fill:    #6e4a1f;
+  --accent-strong:  #5c3d18;
+  --accent-quiet:   #6e4a1f;
+  --accent-soft:    rgba(122, 82, 36, 0.12);
+  --accent-line:    rgba(122, 82, 36, 0.34);
+  --accent-contrast:#fbf5e8;
+
+  --positive:       #4a7a3c;
+  --warning:        #9a6f1f;
+  --danger:         #a8442f;
+
+  --shadow-island:
+      0 1px 2px rgba(60, 48, 28, 0.10),
+      0 8px 22px rgba(60, 48, 28, 0.12);
+  --shadow-raised:
+      0 2px 6px rgba(60, 48, 28, 0.12),
+      0 16px 40px rgba(60, 48, 28, 0.16);
+  --shadow-dock:
+      0 2px 8px rgba(60, 48, 28, 0.12),
+      0 12px 30px rgba(60, 48, 28, 0.16);
+
+  color-scheme: light;
+}
+
 /* ==========================================================================
    2. CSS RESET (small + modern)
    ========================================================================== */
