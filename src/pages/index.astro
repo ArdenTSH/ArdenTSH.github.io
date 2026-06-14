@@ -1,0 +1,81 @@
+---
+// Home. A column of equal-width islands: one hero island with all the meet-me
+// text (edit it in src/config/site.ts), then one island per research direction.
+import PageShell from "../layouts/PageShell.astro";
+import Island from "../components/Island.astro";
+import { Icon } from "astro-icon/components";
+import { researchAreas, site } from "../config/site";
+---
+
+<PageShell title={site.name} active="home">
+  <Island as="header">
+    <p class="eyebrow">{site.eyebrow}</p>
+    <h1>{site.name}</h1>
+    <p class="lead">{site.tagline}</p>
+    <p class="text-secondary intro">{site.intro}</p>
+  </Island>
+
+  {
+    researchAreas.map((a) => (
+      <a class="card-link" href={`/research/${a.slug}`}>
+        <Island>
+          <div class="card-inner">
+            <Icon name={a.icon} class="card-icon" aria-hidden="true" />
+            <div class="card-body">
+              <h3>{a.label}</h3>
+              <p class="text-secondary">{a.blurb}</p>
+              <span class="label card-go">
+                Explore <Icon name="tabler:arrow-right" aria-hidden="true" />
+              </span>
+            </div>
+          </div>
+        </Island>
+      </a>
+    ))
+  }
+</PageShell>
+
+<style>
+  .intro {
+    font-size: var(--text-md);
+  }
+  .card-link {
+    display: block;
+    color: inherit;
+  }
+  .card-inner {
+    display: flex;
+    gap: var(--space-4);
+    align-items: flex-start;
+  }
+  .card-inner :global(.card-icon) {
+    width: 24px;
+    height: 24px;
+    color: var(--accent);
+    flex: none;
+    margin-top: 3px;
+  }
+  .card-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  .card-go {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--accent);
+    margin-top: var(--space-1);
+  }
+  .card-go :global(svg) {
+    width: 14px;
+    height: 14px;
+  }
+  .card-link:hover :global(.island) {
+    border-color: var(--border-strong);
+  }
+  .card-link:hover .card-go {
+    color: var(--accent-strong);
+  }
+</style>

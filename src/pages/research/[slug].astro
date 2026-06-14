@@ -1,0 +1,49 @@
+---
+// Research direction page (Phase 0.5 stub). One file serves all four areas via
+// a dynamic route. Header (with the back link) and body each live in an island;
+// each area gets its own background + real content in later phases.
+import PageShell from "../../layouts/PageShell.astro";
+import Island from "../../components/Island.astro";
+import { Icon } from "astro-icon/components";
+import { researchAreas } from "../../config/site";
+
+export function getStaticPaths() {
+  return researchAreas.map((area) => ({
+    params: { slug: area.slug },
+    props: { area },
+  }));
+}
+
+const { area } = Astro.props;
+---
+
+<PageShell title={area.label} active={area.slug}>
+  <Island as="header">
+    <a href="/" class="back-link">
+      <Icon name="tabler:arrow-left" aria-hidden="true" /> Back to home
+    </a>
+    <p class="eyebrow">Research direction</p>
+    <h1>{area.label}</h1>
+    <p class="lead">{area.blurb}</p>
+  </Island>
+
+  <Island>
+    <p class="text-secondary">
+      Full write-up, figures and attached outputs arrive in Phase 1. This page
+      exists so the route, layout and navigation already work end to end.
+    </p>
+  </Island>
+</PageShell>
+
+<style>
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    width: fit-content;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+  }
+  .back-link:hover { color: var(--accent); }
+  .back-link :global(svg) { width: 16px; height: 16px; }
+</style>

@@ -1,0 +1,296 @@
+---
+// <Dock> — the persistent bottom navigation (Phase 0.4).
+// A floating pill. Each item shows its label on hover/focus (expanding upward).
+// RESEARCH is a disclosure: on wide screens the bar "pulls apart" and the four
+// areas reveal inline (icon + short label); below ~900px it falls back to a
+// popover so the bar can't overflow. CONTACT is a popover (too many links to
+// pull inline). aria-expanded is the single source of truth for each, so
+// keyboard, mouse and touch never desync.
+import { Icon } from "astro-icon/components";
+import { researchAreas, contactLinks } from "../config/site";
+
+interface Props {
+  active?: string;
+}
+const { active = "" } = Astro.props;
+const onResearch = researchAreas.some((a) => a.slug === active);
+const isExternal = (href: string) => href.startsWith("http");
+---
+
+<nav class="dock" aria-label="Primary">
+  <a
+    class="dock-item"
+    href="/"
+    data-tip="Home"
+    aria-label="Home"
+    aria-current={active === "home" ? "page" : undefined}
+  >
+    <Icon name="tabler:home" aria-hidden="true" />
+  </a>
+
+  <div class="dock-group dock-research">
+    <button
+      type="button"
+      class:list={["dock-item", { "is-active": onResearch }]}
+      data-flyout-toggle
+      data-tip="Research"
+      aria-haspopup="true"
+      aria-expanded="false"
+      aria-controls="research-items"
+      aria-label="Research directions"
+    >
+      <Icon name="tabler:microscope" aria-hidden="true" />
+    </button>
+    <div id="research-items" class="dock-research-items">
+      {
+        researchAreas.map((a) => (
+          <a
+            class="research-link"
+            href={`/research/${a.slug}`}
+            aria-current={active === a.slug ? "page" : undefined}
+          >
+            <Icon name={a.icon} aria-hidden="true" />
+            <span>{a.short}</span>
+          </a>
+        ))
+      }
+    </div>
+  </div>
+
+  <a
+    class="dock-item"
+    href="/writing"
+    data-tip="Writing"
+    aria-label="Writing"
+    aria-current={active === "writing" ? "page" : undefined}
+  >
+    <Icon name="tabler:pencil" aria-hidden="true" />
+  </a>
+
+  <a
+    class="dock-item"
+    href="/cv"
+    data-tip="CV"
+    aria-label="CV"
+    aria-current={active === "cv" ? "page" : undefined}
+  >
+    <Icon name="tabler:file-text" aria-hidden="true" />
+  </a>
+
+  <div class="dock-group">
+    <button
+      type="button"
+      class="dock-item"
+      data-flyout-toggle
+      data-tip="Contact"
+      aria-haspopup="true"
+      aria-expanded="false"
+      aria-controls="contact-flyout"
+      aria-label="Contact and links"
+    >
+      <Icon name="tabler:at" aria-hidden="true" />
+    </button>
+    <div id="contact-flyout" class="dock-flyout">
+      {
+        contactLinks.map((l) => (
+          <a
+            class="dock-flyout-item"
+            href={l.href}
+            target={isExternal(l.href) ? "_blank" : undefined}
+            rel={isExternal(l.href) ? "noopener noreferrer" : undefined}
+          >
+            <Icon name={l.icon} aria-hidden="true" />
+            <span>{l.label}</span>
+          </a>
+        ))
+      }
+    </div>
+  </div>
+</nav>
+
+<style>
+  .dock-item { position: relative; }
+  .dock-item :global(svg) { width: 20px; height: 20px; display: block; }
+
+  /* Hover/focus label that expands upward. */
+  .dock-item[data-tip]::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%) translateY(4px);
+    padding: 4px 8px;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-label);
+    color: var(--text-primary);
+    background: var(--surface-raised);
+    border: var(--hairline) solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition:
+      opacity var(--dur-fast) var(--ease-standard),
+      transform var(--dur-fast) var(--ease-standard);
+  }
+  .dock-item[data-tip]:focus-visible::after {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .dock-item[data-tip]:hover::after {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+  }
+
+  .dock-group { position: relative; display: flex; align-items: center; }
+
+  /* ── Popover flyout (Contact always; Research below the wide breakpoint) ── */
+  .dock-flyout,
+  .dock-research-items {
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 50%;
+    transform: translateX(-50%) translateY(6px);
+    min-width: min(13.5rem, calc(100vw - var(--space-5)));
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--space-2);
+    background: var(--surface-raised);
+    border: var(--hairline) solid var(--border-strong);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-raised);
+    opacity: 0;
+    visibility: hidden;
+    transition:
+      opacity var(--dur-fast) var(--ease-standard),
+      transform var(--dur-fast) var(--ease-standard),
+      visibility 0s linear var(--dur-fast);
+  }
+  .dock-group[data-open] .dock-flyout,
+  .dock-group[data-open] .dock-research-items {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(0);
+    transition-delay: 0s;
+  }
+
+  .dock-flyout-item,
+  .research-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    white-space: nowrap;
+  }
+  .dock-flyout-item:hover,
+  .dock-flyout-item:focus-visible,
+  .research-link:hover,
+  .research-link:focus-visible {
+    background: var(--accent-soft);
+    color: var(--text-primary);
+  }
+  .dock-flyout-item[aria-current="page"],
+  .research-link[aria-current="page"] {
+    color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .dock-flyout-item :global(svg),
+  .research-link :global(svg) {
+    width: 18px;
+    height: 18px;
+    flex: none;
+    color: var(--accent);
+  }
+
+  /* ── Wide screens: Research pulls the bar apart and reveals inline ──────── */
+  @media (min-width: 900px) {
+    .dock-research-items {
+      position: static;
+      transform: none;
+      flex-direction: row;
+      gap: var(--space-1);
+      min-width: 0;
+      max-width: 0;
+      padding: 0;
+      margin: 0;
+      overflow: hidden;
+      background: none;
+      border: none;
+      box-shadow: none;
+      opacity: 1;
+      visibility: hidden;
+      transition:
+        max-width var(--dur-base) var(--ease-emphasis),
+        visibility 0s linear var(--dur-base);
+    }
+    .dock-research[data-open] .dock-research-items {
+      max-width: 36rem;
+      transform: none;
+      visibility: visible;
+      transition-delay: 0s;
+    }
+    /* In the bar the areas are compact pills, not full-width rows. */
+    .research-link {
+      min-height: 0;
+      height: 2.5rem;
+      padding: 0 12px;
+      margin-left: var(--space-1);
+      border: var(--hairline) solid transparent;
+    }
+    .research-link:hover,
+    .research-link:focus-visible {
+      border-color: var(--accent-line);
+    }
+  }
+</style>
+
+<script>
+  // Each Research/Contact disclosure uses aria-expanded as its only state; CSS
+  // reveals the inline pills (Research, wide) or the popover from it. We set it
+  // on hover (pointer devices), click (touch / intentional dismiss), and close
+  // on Escape, focus-leave and outside-click — so visual and ARIA state agree.
+  const hoverable = window.matchMedia("(hover: hover) and (pointer: fine)");
+
+  document.querySelectorAll<HTMLElement>(".dock-group").forEach((group) => {
+    const btn = group.querySelector<HTMLButtonElement>("[data-flyout-toggle]");
+    if (!btn) return;
+
+    const setOpen = (open: boolean) => {
+      btn.setAttribute("aria-expanded", String(open));
+      group.toggleAttribute("data-open", open);
+    };
+    const isOpen = () => btn.getAttribute("aria-expanded") === "true";
+
+    btn.addEventListener("click", () => setOpen(!isOpen()));
+
+    group.addEventListener("mouseenter", () => {
+      if (hoverable.matches) setOpen(true);
+    });
+    group.addEventListener("mouseleave", () => {
+      if (hoverable.matches) setOpen(false);
+    });
+
+    group.addEventListener("focusout", (e) => {
+      const next = e.relatedTarget as Node | null;
+      if (!next || !group.contains(next)) setOpen(false);
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && isOpen()) {
+        setOpen(false);
+        btn.focus();
+      }
+    });
+    document.addEventListener("click", (e) => {
+      if (!group.contains(e.target as Node)) setOpen(false);
+    });
+  });
+</script>

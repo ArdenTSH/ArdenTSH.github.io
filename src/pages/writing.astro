@@ -1,0 +1,21 @@
+---
+// Writing (Phase 0.5 stub). Header + body each in an island; one page, one
+// background, posts open in place later.
+import PageShell from "../layouts/PageShell.astro";
+import Island from "../components/Island.astro";
+---
+
+<PageShell title="Writing" active="writing">
+  <Island as="header">
+    <p class="eyebrow">Essays & notes</p>
+    <h1>Writing</h1>
+    <p class="lead">Longer-form writing — starting with AI safety.</p>
+  </Island>
+
+  <Island>
+    <p class="text-secondary">
+      Posts arrive in Phase 1.5, opening in place on a shared background. The
+      first will be the AI-safety essay.
+    </p>
+  </Island>
+</PageShell>

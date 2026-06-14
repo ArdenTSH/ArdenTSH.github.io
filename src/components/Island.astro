@@ -1,0 +1,41 @@
+---
+// <Island> — the opaque card primitive (Phase 0.2).
+// Wraps the .island utility from global.css and exposes its variants as props,
+// so pages are assembled from real building blocks instead of raw classes.
+//
+//   <Island>…</Island>                default card
+//   <Island variant="solid">          fully opaque (busiest backgrounds)
+//   <Island variant="quiet">          recessed (CV / dialled-down background)
+//   <Island size="compact" | "lg">    padding / scale
+//   <Island accent>                   single lit accent edge
+//   <Island as="section" class="…">   change tag / add classes
+interface Props {
+  variant?: "default" | "solid" | "quiet";
+  size?: "default" | "compact" | "lg";
+  accent?: boolean;
+  as?: keyof HTMLElementTagNameMap;
+  class?: string;
+}
+const {
+  variant = "default",
+  size = "default",
+  accent = false,
+  as: Tag = "article",
+  class: className = "",
+  ...rest
+} = Astro.props;
+
+const classes = [
+  "island",
+  variant === "solid" && "island--solid",
+  variant === "quiet" && "island--quiet",
+  size === "compact" && "island--compact",
+  size === "lg" && "island--lg",
+  accent && "island--accent",
+  className,
+]
+  .filter(Boolean)
+  .join(" ");
+---
+
+<Tag class={classes} {...rest}><slot /></Tag>

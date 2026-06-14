@@ -1,0 +1,78 @@
+---
+// <PageShell> — the layout every page reuses (Phase 0.3).
+// Layers, back to front: a fixed full-bleed background slot (pages inject their
+// scene later), a single centred COLUMN of equal-width islands (all page content
+// lives in islands — nothing loose floats on the background), an optional foot
+// slot (the home MNIST strip lands there), and the persistent Dock on top.
+import Layout from "./Layout.astro";
+import Dock from "../components/Dock.astro";
+
+interface Props {
+  title: string;
+  description?: string;
+  active?: string;
+}
+const { title, description, active = "" } = Astro.props;
+---
+
+<Layout title={title} description={description}>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  {/* Full-bleed background slot — pages inject their scene here (Phase 3). */}
+  <div class="bg-layer" aria-hidden="true"><slot name="background" /></div>
+
+  <div class="page">
+    {/* The island column: each top-level child is an island, all same width. */}
+    <main id="main" tabindex="-1" class="column">
+      <slot />
+    </main>
+    {/* Foot slot — the home MNIST strip lands here later. */}
+    <div class="foot"><slot name="foot" /></div>
+  </div>
+
+  <Dock active={active} />
+</Layout>
+
+<style>
+  .bg-layer {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-background);
+    background: var(--bg);
+  }
+  .page {
+    position: relative;
+    z-index: var(--z-content);
+    display: flex;
+    flex-direction: column;
+    min-height: 100svh;
+    /* clear the fixed bottom dock */
+    padding-bottom: calc(var(--space-9) + env(safe-area-inset-bottom, 0px));
+  }
+  /* One centred column; every direct child (an island) is the same width. */
+  .column {
+    flex: 1 0 auto;
+    width: 100%;
+    max-width: 48rem;
+    margin-inline: auto;
+    padding-inline: var(--space-5);
+    padding-top: var(--space-8);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+  }
+  /* Programmatic focus target for the skip link — no visible ring needed here. */
+  .column:focus {
+    outline: none;
+  }
+  .foot:empty {
+    display: none;
+  }
+  .foot {
+    width: 100%;
+    max-width: 48rem;
+    margin-inline: auto;
+    padding-inline: var(--space-5);
+    margin-top: var(--space-7);
+  }
+</style>

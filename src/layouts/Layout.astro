@@ -1,0 +1,47 @@
+---
+// ─────────────────────────────────────────────────────────────
+//  Layout.astro — BASE HTML DOCUMENT ONLY (Phase 0.1)
+//
+//  Responsibilities, deliberately minimal:
+//    • valid <html lang> / charset / viewport
+//    • <title> + <meta description> from props
+//    • imports the global design tokens + base styles (global.css)
+//    • declares the colour scheme (dark default; OS light honoured)
+//    • renders a <slot/>
+//
+//  Theme: <html> carries NO hardcoded data-theme, so prefers-color-scheme
+//  drives the default (dark-leaning by design). A later step can set
+//  data-theme="light|dark" on <html> for an explicit toggle —
+//  global.css already supports that override.
+//
+//  The full page SHELL — full-bleed background slot, bottom dock,
+//  footer — is a LATER step and intentionally NOT built here.
+// ─────────────────────────────────────────────────────────────
+import "../styles/global.css";
+
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const {
+  title,
+  description = "Arden Tsang — theoretical & computational physicist.",
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    {/* Dark is the design default; the OS may switch us to light. */}
+    <meta name="color-scheme" content="dark light" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title}</title>
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

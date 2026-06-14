@@ -1,0 +1,76 @@
+---
+// CV (Phase 1.4 start). The actual PDF is embedded so visitors read it without
+// leaving the site, plus links to open it as a browser PDF or download it.
+// Drop your PDF at: public/cv/Arden_Tsang_CV.pdf  (overwrite to update it).
+import PageShell from "../layouts/PageShell.astro";
+import Island from "../components/Island.astro";
+import { Icon } from "astro-icon/components";
+
+const pdfPath = "/cv/Arden_Tsang_CV.pdf";
+---
+
+<PageShell title="CV" active="cv">
+  <Island as="header">
+    <p class="eyebrow">Curriculum vitae</p>
+    <h1>CV</h1>
+    <p class="lead">Read it here, or open the PDF — no need to leave the page.</p>
+    <p class="cv-actions">
+      <a class="cv-action" href={pdfPath} target="_blank" rel="noopener">
+        <Icon name="tabler:external-link" aria-hidden="true" /> Open PDF
+      </a>
+      <a class="cv-action" href={pdfPath} download>
+        <Icon name="tabler:download" aria-hidden="true" /> Download
+      </a>
+    </p>
+  </Island>
+
+  <Island variant="quiet">
+    <div class="cv-embed">
+      <iframe src={pdfPath} title="Arden Tsang — curriculum vitae" loading="lazy"
+      ></iframe>
+    </div>
+    <p class="cv-fallback text-muted">
+      If the PDF doesn't display in your browser, <a
+        href={pdfPath}
+        target="_blank"
+        rel="noopener">open it in a new tab</a
+      >.
+    </p>
+  </Island>
+</PageShell>
+
+<style>
+  .cv-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-4);
+  }
+  .cv-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .cv-action :global(svg) {
+    width: 16px;
+    height: 16px;
+  }
+  .cv-embed {
+    width: 100%;
+    height: min(85vh, 1100px);
+    min-height: 540px;
+    border: var(--hairline) solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: var(--surface-alt);
+  }
+  .cv-embed iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+  }
+  .cv-fallback {
+    margin-top: var(--space-3);
+    font-size: var(--text-sm);
+  }
+</style>

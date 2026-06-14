@@ -1,0 +1,677 @@
+/* ==========================================================================
+   global.css — Observatory / instrument design system (Phase 0.1 foundation)
+   --------------------------------------------------------------------------
+   Arden Tsang — academic site. Design angle: a precise scientific instrument.
+   Near-black field, hairline borders, a single cool accent used like an
+   indicator light, optional mono for data/labels. Calm, exact, engineered.
+
+   What lives here (foundation only — no animations, no page backgrounds):
+     1. Design tokens (:root) — dark default + light override
+     2. A small modern CSS reset
+     3. Base element styles (body, headings, links, p, etc.)
+     4. The .island card utility (legible over vivid full-bleed backgrounds)
+     5. A few base utilities the bottom dock + page shell will reuse
+
+   Theming model: dark is the default. Light mode applies two ways —
+   automatically via prefers-color-scheme (only when no theme is pinned), and
+   explicitly via [data-theme="light"] / [data-theme="dark"] on <html>; an
+   explicit data-theme always wins. Every colour is a custom property; nothing
+   mode-breaking is hardcoded on an element.
+   ========================================================================== */
+
+/* ==========================================================================
+   1. DESIGN TOKENS
+   ========================================================================== */
+
+:root {
+  /* ---- Colour: DARK (default) -------------------------------------------
+     An observatory at night. The field is near-black with the faintest cool
+     cast; surfaces step up in luminance; borders are hairlines. The accent is
+     a single cool blue used sparingly, like an indicator LED. Contrast ratios
+     are noted against the surface a token sits on (WCAG AA target 4.5:1 for
+     body text, 3:1 for large text / UI). */
+
+  /* Backdrop + island surfaces */
+  --bg:             #07090d;  /* page field, behind everything (backgrounds cover it) */
+  --surface:        #0e1219;  /* island body — primary opaque card surface */
+  --surface-alt:    #161b24;  /* nested panels, dock, hover wells, code blocks */
+  --surface-raised: #1d242f;  /* highest step — active dock item, popovers */
+
+  /* Borders / hairlines (the "machined edge") */
+  --border:         #232b37;  /* default hairline between surfaces */
+  --border-strong:  #303a49;  /* emphasised divider, top-edge highlight */
+  --border-faint:   #161b23;  /* whisper divider inside an island */
+
+  /* Text — measured on --surface (#0e1219) */
+  --text-primary:   #e9edf3;  /* ~15:1  — headings, body */
+  --text-secondary: #aab4c2;  /* ~7.8:1 — supporting copy, captions */
+  --text-muted:     #7c8696;  /* ~4.6:1 — labels, metadata (clears AA body) */
+  --text-faint:     #565f6d;  /* ~2.8:1 — decorative only, NEVER essential text */
+
+  /* Accent — the single cool indicator. Blue family (~#378ADD home).
+     TWO accent roles, deliberately split to close a real AA hazard:
+       • --accent      : LINKS + indicators. Used as *text/icon colour* on a
+                         dark surface — passes AA there (~6.6:1).
+       • --accent-fill : solid accent BACKGROUNDS that carry WHITE labels.
+                         A mid-blue like --accent at ~3.6:1 fails white-on-blue
+                         small text, so fills use this darker blue instead.
+     CONTRAST MODEL (both modes obey it): a solid --accent-fill always carries
+     WHITE text/icons via --accent-contrast. Measured here: white on
+     --accent-fill #2f73c4 = 4.81:1 (AA pass, small text). */
+  --accent:         #4d9be6;  /* link / indicator — ~6.6:1 on --surface (AA) */
+  --accent-fill:    #2f73c4;  /* solid accent BG for white labels (white-on-fill 4.81:1, AA) */
+  --accent-strong:  #6cb0ef;  /* hover / brighter LED */
+  --accent-quiet:   #4d9be6;  /* pressed state = --accent; 6.39:1 on --surface (AA). A press need not dim below rest. */
+  --accent-soft:    rgba(77, 155, 230, 0.14); /* faint wash: hover wells, tint */
+  --accent-line:    rgba(77, 155, 230, 0.40); /* accent-tinted hairline */
+  --accent-contrast:#ffffff;  /* white-on-fill: text/icon ON a solid accent fill (4.81:1 on --accent-fill, AA) */
+
+  /* Functional accents — desaturated so they never read as "rainbow".
+     Status only (passing test, warning, error), never decoration. */
+  --positive:       #3fa888;  /* teal-green, sibling to the brand teal */
+  --warning:        #c79a52;  /* muted amber */
+  --danger:         #d4756b;  /* muted clay-red */
+
+  /* Selection + focus */
+  --selection-bg:   var(--accent-soft);
+  --selection-fg:   var(--text-primary);
+  --focus-ring:     var(--accent);
+
+  /* ---- Typography ------------------------------------------------------- */
+  /* System-font stacks: zero network cost, native rendering, instantly
+     serious. Sans for everything; mono for data, labels, coordinates. */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+               "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "SFMono-Regular", "Menlo",
+               "Cascadia Mono", "Roboto Mono", "Consolas", monospace;
+
+  /* OPTIONAL serif "display" voice — a SEPARATE token, NOT the default.
+     Headings stay on --font-sans; opt a heading into the scholarly serif with
+     the .display / .heading-serif utility to A/B it later without touching
+     anything else. Charter ships on macOS/iOS, Georgia is the universal
+     fallback — zero webfont cost, so first paint stays instant. Used at the
+     same two weights (400/500); font-synthesis:none below forbids faux bold. */
+  --font-display: "Charter", "Source Serif 4", "Georgia", "Times New Roman",
+                  serif;
+
+  /* EXACTLY TWO weights — regular + medium. Never heavier. */
+  --weight-regular: 400;
+  --weight-medium:  500;
+
+  /* Modular type scale — ratio ~1.22, tightened so it reads engineered, not
+     playful. rem-based for accessibility/zoom. */
+  --text-xs:   0.7813rem;  /* 12.5px — mono labels, footnotes, dock captions */
+  --text-sm:   0.875rem;   /* 14px   — captions, metadata, fine print */
+  --text-base: 1rem;       /* 16px   — body */
+  --text-md:   1.125rem;   /* 18px   — lead paragraph, island intro */
+  --text-lg:   1.3125rem;  /* 21px   — h3 / card titles */
+  --text-xl:   1.625rem;   /* 26px   — h2 */
+  --text-2xl:  2.0625rem;  /* 33px   — h1 (interior pages) */
+  --text-3xl:  2.625rem;   /* 42px   — display / home hero name */
+
+  /* Line heights + tracking */
+  --leading-tight: 1.18;   /* display + headings */
+  --leading-snug:  1.35;   /* card titles, short blocks */
+  --leading-body:  1.6;    /* paragraph copy */
+  --tracking-tight:  -0.011em; /* large headings: pull letters together */
+  --tracking-normal: 0;
+  --tracking-label:  0.02em;   /* mono labels (sentence case, NOT caps) */
+
+  /* ---- Spacing — 4px base grid ----------------------------------------- */
+  --space-0: 0;
+  --space-1: 0.25rem;  /*  4 */
+  --space-2: 0.5rem;   /*  8 */
+  --space-3: 0.75rem;  /* 12 */
+  --space-4: 1rem;     /* 16 */
+  --space-5: 1.5rem;   /* 24 */
+  --space-6: 2rem;     /* 32 */
+  --space-7: 3rem;     /* 48 */
+  --space-8: 4rem;     /* 64 */
+  --space-9: 6rem;     /* 96 */
+
+  /* Layout */
+  --measure:     68ch;     /* ideal reading width for prose */
+  --content-max: 72rem;    /* max width of the centred content column */
+  --island-pad:  var(--space-6); /* default interior padding of an island */
+
+  /* ---- Radii — small + crisp (an instrument, not a pill) --------------- */
+  --radius-xs:    3px;
+  --radius-sm:    5px;
+  --radius-md:    8px;    /* island default */
+  --radius-lg:    12px;   /* large island */
+  --radius-pill:  999px;
+  --radius-round: 50%;
+
+  /* ---- Borders --------------------------------------------------------- */
+  --hairline: 1px;     /* the machined edge — keep it 1px, never fat */
+
+  /* ---- Elevation / shadow ---------------------------------------------
+     Restrained. Shadows separate an island from a busy background, not for
+     drama. Layered: a tight contact shadow + a soft ambient one. Tuned for
+     DARK; light mode overrides below. */
+  --shadow-island:
+      0 1px 2px rgba(0, 0, 0, 0.40),
+      0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-raised:
+      0 2px 6px rgba(0, 0, 0, 0.45),
+      0 16px 48px rgba(0, 0, 0, 0.55);
+  --shadow-dock:
+      0 2px 8px rgba(0, 0, 0, 0.50),
+      0 12px 32px rgba(0, 0, 0, 0.55);
+  /* Focus ring as a token so every interactive element matches. */
+  --ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--focus-ring);
+
+  /* ---- Motion — defined now, USED later. Calm + exact. ------------------ */
+  --dur-instant: 80ms;
+  --dur-fast:    140ms;
+  --dur-base:    220ms;
+  --dur-slow:    360ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);   /* enter / most UI */
+  --ease-emphasis: cubic-bezier(0.3, 0, 0, 1);   /* expressive but controlled */
+  --ease-exit:     cubic-bezier(0.4, 0, 1, 1);   /* leave */
+
+  /* ---- Z-index scale --------------------------------------------------- */
+  --z-background: 0;
+  --z-content:    10;
+  --z-dock:       100;
+  --z-popover:    200;
+  --z-modal:      300;
+
+  /* Render native form controls / scrollbars dark. */
+  color-scheme: dark;
+}
+
+/* ---- Colour: LIGHT values (applied two ways below) ----------------------
+   Daylight at the observatory: a cool off-white field, white island bodies,
+   ink-navy text. Same single accent, darkened so links stay AA on light. The
+   page field is tinted (not pure white) so islands still read as discrete
+   instruments floating over a background. The identical override set is
+   applied via an explicit [data-theme="light"] AND via prefers-color-scheme
+   (scoped to :root:not([data-theme]) so a pinned theme always wins). */
+
+:root[data-theme="light"] {
+  --bg:             #eef1f5;
+  --surface:        #ffffff;  /* island body */
+  --surface-alt:    #f3f5f9;  /* nested panels, dock, code */
+  --surface-raised: #ffffff;
+
+  --border:         #d7dde6;
+  --border-strong:  #c2cad6;
+  --border-faint:   #e6eaf0;
+
+  /* Text measured on --surface (#ffffff) */
+  --text-primary:   #131822;  /* ~16.8:1 */
+  --text-secondary: #424c5b;  /* ~9.0:1  */
+  --text-muted:     #5d6675;  /* ~5.2:1  (AA) */
+  --text-faint:     #8b94a3;  /* decorative only */
+
+  --accent:         #1f6fb8;  /* ~5.0:1 on white (AA) */
+  --accent-fill:    #1f6fb8;  /* same value as link in light: white-on-fill 5.22:1, AA */
+  --accent-strong:  #185c9c;
+  --accent-quiet:   #1f6fb8;  /* pressed state = --accent; 5.0:1 on --surface (AA). #2a7fc9 was 4.22:1, below AA. */
+  --accent-soft:    rgba(31, 111, 184, 0.10);
+  --accent-line:    rgba(31, 111, 184, 0.32);
+  --accent-contrast:#ffffff;  /* white-on-fill: 5.22:1 on --accent-fill (AA) */
+
+  --positive:       #1f8a6b;
+  --warning:        #9a6f1f;
+  --danger:         #b34a3e;
+
+  --shadow-island:
+      0 1px 2px rgba(15, 23, 42, 0.06),
+      0 8px 24px rgba(15, 23, 42, 0.10);
+  --shadow-raised:
+      0 2px 6px rgba(15, 23, 42, 0.08),
+      0 16px 48px rgba(15, 23, 42, 0.14);
+  --shadow-dock:
+      0 2px 8px rgba(15, 23, 42, 0.10),
+      0 12px 32px rgba(15, 23, 42, 0.14);
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --bg:             #eef1f5;
+    --surface:        #ffffff;
+    --surface-alt:    #f3f5f9;
+    --surface-raised: #ffffff;
+
+    --border:         #d7dde6;
+    --border-strong:  #c2cad6;
+    --border-faint:   #e6eaf0;
+
+    --text-primary:   #131822;
+    --text-secondary: #424c5b;
+    --text-muted:     #5d6675;
+    --text-faint:     #8b94a3;
+
+    --accent:         #1f6fb8;
+    --accent-fill:    #1f6fb8;  /* white-on-fill 5.22:1, AA */
+    --accent-strong:  #185c9c;
+    --accent-quiet:   #1f6fb8;  /* pressed = --accent; 5.0:1 on --surface (AA). #2a7fc9 was 4.22:1, below AA. */
+    --accent-soft:    rgba(31, 111, 184, 0.10);
+    --accent-line:    rgba(31, 111, 184, 0.32);
+    --accent-contrast:#ffffff;  /* white-on-fill: 5.22:1 on --accent-fill (AA) */
+
+    --positive:       #1f8a6b;
+    --warning:        #9a6f1f;
+    --danger:         #b34a3e;
+
+    --shadow-island:
+        0 1px 2px rgba(15, 23, 42, 0.06),
+        0 8px 24px rgba(15, 23, 42, 0.10);
+    --shadow-raised:
+        0 2px 6px rgba(15, 23, 42, 0.08),
+        0 16px 48px rgba(15, 23, 42, 0.14);
+    --shadow-dock:
+        0 2px 8px rgba(15, 23, 42, 0.10),
+        0 12px 32px rgba(15, 23, 42, 0.14);
+
+    color-scheme: light;
+  }
+}
+
+/* ==========================================================================
+   2. CSS RESET (small + modern)
+   ========================================================================== */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+* { margin: 0; }
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -moz-tab-size: 4;
+  tab-size: 4;
+}
+
+body {
+  min-height: 100svh;
+  line-height: var(--leading-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+img, picture, video, canvas, svg {
+  display: block;
+  max-width: 100%;
+}
+
+input, button, textarea, select { font: inherit; color: inherit; }
+
+button { background: none; border: none; cursor: pointer; }
+
+a { color: inherit; text-decoration: inherit; }
+
+/* Opt-in list reset for nav/dock lists. */
+ul[role="list"], ol[role="list"], .reset-list {
+  list-style: none;
+  padding: 0;
+}
+
+p, h1, h2, h3, h4, li, figcaption { overflow-wrap: break-word; }
+
+/* Headings don't inherit UA bold — weight is controlled via tokens. */
+:where(h1, h2, h3, h4, h5, h6) { font-weight: var(--weight-regular); }
+:where(h1, h2, h3, h4) { text-wrap: balance; }
+:where(p) { text-wrap: pretty; }
+
+/* New stacking context for the app root (keeps backgrounds behind content). */
+#root, #__astro { isolation: isolate; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ==========================================================================
+   3. BASE ELEMENT STYLES
+   ========================================================================== */
+
+body {
+  font-family: var(--font-sans);
+  font-weight: var(--weight-regular);
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  background-color: var(--bg);
+  font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+  /* Never let the browser fake a weight or slant. This structurally protects
+     the strict two-weight (400/500) rule — no faux bold can ever appear, in
+     either the sans or the optional serif voice. */
+  font-synthesis: none;
+}
+
+::selection { background: var(--selection-bg); color: var(--selection-fg); }
+
+/* Headings — sentence case is an authoring rule; here we set scale, weight,
+   leading, tracking. h1 uses a fluid clamp so the hero breathes on wide
+   screens without a media query. */
+h1 {
+  font-size: clamp(var(--text-2xl), 4.5vw, var(--text-3xl));
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+}
+h2 {
+  font-size: var(--text-xl);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+}
+h3 {
+  font-size: var(--text-lg);
+  line-height: var(--leading-snug);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+}
+h4 {
+  font-size: var(--text-md);
+  line-height: var(--leading-snug);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+}
+
+p { line-height: var(--leading-body); }
+p, ul, ol { max-width: var(--measure); }
+
+/* Links — the accent, restrained. Underline only on hover/focus so body prose
+   stays calm; colour carries the affordance. */
+a {
+  color: var(--accent);
+  text-decoration: none;
+  text-decoration-color: var(--accent-line);
+  text-underline-offset: 0.18em;
+  transition: color var(--dur-fast) var(--ease-standard),
+              text-decoration-color var(--dur-fast) var(--ease-standard);
+}
+a:hover { color: var(--accent-strong); }
+a:active { color: var(--accent-quiet); }
+
+/* Underline-on-hover ONLY for links inside prose. Structural links (cards,
+   dock, flyout) may change colour but must never underline their contents. */
+:where(p, li, h1, h2, h3, h4, h5, h6, figcaption, blockquote, .prose) a:hover {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+}
+
+strong, b { font-weight: var(--weight-medium); }
+
+/* Visible, consistent focus for keyboard users everywhere. */
+:where(a, button, input, textarea, select, summary, [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-radius: var(--radius-xs);
+}
+:focus:not(:focus-visible) { outline: none; }
+
+/* Code + data — the mono voice of the instrument. */
+code, kbd, samp, pre {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+code:not(pre code) {
+  background: var(--surface-alt);
+  border: var(--hairline) solid var(--border);
+  border-radius: var(--radius-xs);
+  padding: 0.1em 0.38em;
+}
+pre {
+  background: var(--surface-alt);
+  border: var(--hairline) solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4);
+  overflow-x: auto;
+}
+
+hr {
+  border: none;
+  border-top: var(--hairline) solid var(--border);
+  margin-block: var(--space-6);
+}
+
+small { font-size: var(--text-sm); color: var(--text-secondary); }
+
+/* Quiet scrollbars that match the instrument (where supported). */
+* { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+
+/* ==========================================================================
+   4. THE .island UTILITY
+   --------------------------------------------------------------------------
+   Core promise: an island stays perfectly legible over a vivid, busy,
+   colourful full-bleed background (accreting black hole, galaxy field,
+   detector event). Strategy:
+     • A near-opaque surface (98%) — the background never bleeds THROUGH text.
+       The 2% transparency only seats the island in the scene; legibility is
+       owned by the fill, NOT by blur.
+     • A hairline border + a faint inner top highlight = a machined edge that
+       reads against ANY background colour (light edge over a dark scene; the
+       border over a light scene).
+     • A layered drop shadow to separate the island from whatever is behind.
+     • NO heavy backdrop blur (that's the glassmorphism the brief forbids and
+       it tanks legibility/perf over busy imagery). A whisper of saturate-only
+       backdrop-filter is optional and degrades gracefully.
+   ========================================================================== */
+
+.island {
+  position: relative;
+  background-color: color-mix(in srgb, var(--surface) 98%, transparent);
+  border: var(--hairline) solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--island-pad);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-island);
+  /* Optional, subtle: deepen colours behind the 2% gap without blurring text.
+     saturate-only — no blur — so it never smears the scene into mush. */
+  -webkit-backdrop-filter: saturate(115%);
+  backdrop-filter: saturate(115%);
+}
+
+/* The "machined edge": a 1px inner highlight along the top that catches light
+   like a bevelled instrument panel. Decoration only, pointer-transparent,
+   mode-aware via the border token. */
+.island::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 var(--hairline) 0 0 var(--border-strong);
+  opacity: 0.6;
+}
+
+/* Internal vertical rhythm for island content. */
+.island > * + * { margin-top: var(--space-4); }
+
+/* Where an island sits over an UNKNOWN / extra-busy background and must be
+   bulletproof, opt into full opacity. */
+.island--solid {
+  background-color: var(--surface);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* A quieter, recessed island (e.g. CV, where the background is dialled down). */
+.island--quiet {
+  background-color: var(--surface-alt);
+  box-shadow: none;
+  border-color: var(--border-faint);
+}
+
+/* Tighter padding variant for compact cards. */
+.island--compact { --island-pad: var(--space-4); }
+
+/* Larger, calmer variant for hero / feature cards. */
+.island--lg { --island-pad: var(--space-7); border-radius: var(--radius-lg); }
+
+/* Optional accent edge — a single indicator stripe down the leading edge.
+   Use SPARINGLY (e.g. the active research direction), like a lit LED. */
+.island--accent { border-left: 2px solid var(--accent); }
+
+/* ==========================================================================
+   5. BASE UTILITIES (reused by the dock + page shell later)
+   ========================================================================== */
+
+/* Centred content column with comfortable gutters. */
+.shell {
+  width: 100%;
+  max-width: var(--content-max);
+  margin-inline: auto;
+  padding-inline: var(--space-5);
+}
+
+/* Vertical rhythm helpers: stack children with a consistent gap. */
+.stack    { display: flex; flex-direction: column; gap: var(--space-4); }
+.stack-sm { gap: var(--space-2); }
+.stack-lg { gap: var(--space-6); }
+
+/* A surface step the dock / popovers reuse (no island shadow or edge). */
+.surface-step {
+  background-color: var(--surface-alt);
+  border: var(--hairline) solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+/* Bottom-dock base look (positioning is set here; the hover-expand behaviour
+   comes in a later step). A floating, near-opaque raised panel with a hairline
+   edge + dock shadow — same instrument language as the island. */
+.dock {
+  position: fixed;
+  left: 50%;
+  /* iOS-notch-safe from the foundation: clears the home-indicator inset so the
+     future dock is never retrofitted for the safe area. */
+  bottom: calc(var(--space-5) + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: var(--z-dock);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  background-color: color-mix(in srgb, var(--surface-raised) 96%, transparent);
+  border: var(--hairline) solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-dock);
+  -webkit-backdrop-filter: saturate(120%);
+  backdrop-filter: saturate(120%);
+}
+
+/* A single dock item — square, crisp, accent-lit when active or hovered. */
+.dock-item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  background: transparent;
+  border: var(--hairline) solid transparent;
+  transition: color var(--dur-fast) var(--ease-standard),
+              background-color var(--dur-fast) var(--ease-standard),
+              border-color var(--dur-fast) var(--ease-standard);
+}
+.dock-item:hover {
+  color: var(--text-primary);
+  background-color: var(--accent-soft);
+  border-color: var(--accent-line);
+}
+.dock-item[aria-current="page"],
+.dock-item.is-active {
+  color: var(--accent);
+  background-color: var(--accent-soft);
+  border-color: var(--accent-line);
+}
+
+/* Larger touch targets on coarse pointers — the dock is the site's only nav. */
+@media (pointer: coarse) {
+  .dock-item { width: 2.75rem; height: 2.75rem; }
+}
+
+/* Mono "instrument readout" label — small, sentence case, lightly tracked.
+   For coordinates, dates, tags, status lines. NOT all-caps. */
+.label {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
+  color: var(--text-muted);
+}
+
+/* Eyebrow above a heading: a short accent-coloured mono kicker. */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
+  color: var(--accent);
+}
+
+/* The little indicator dot — the literal "LED". */
+.indicator {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--radius-round);
+  background-color: var(--accent);
+  vertical-align: baseline;
+}
+.indicator--positive { background-color: var(--positive); }
+.indicator--warning  { background-color: var(--warning); }
+.indicator--danger   { background-color: var(--danger); }
+
+/* Optional scholarly serif voice — OPT-IN ONLY, never the default.
+   Add .display (or .heading-serif) to a heading to render it in the transitional
+   serif (--font-display: Charter → Source Serif 4 → Georgia). Lets Arden A/B a
+   serif h1 later without touching markup or the sans default. Stays on the two
+   weights only; font-synthesis:none (set on body) prevents faux bold/italic. */
+.display,
+.heading-serif {
+  font-family: var(--font-display);
+  font-synthesis: none;
+}
+
+/* Text helpers. */
+.text-secondary { color: var(--text-secondary); }
+.text-muted     { color: var(--text-muted); }
+.lead {
+  font-size: var(--text-md);
+  color: var(--text-secondary);
+  line-height: var(--leading-snug);
+}
+
+/* A page heading block: eyebrow + h1 + lead, constrained for comfortable reading. */
+.page-head { max-width: 48rem; margin-bottom: var(--space-7); }
+
+/* Accessibility: visually-hidden (icon-only dock labels, skip links). */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Skip link — appears on focus, lands above the dock. */
+.skip-link {
+  position: fixed;
+  top: var(--space-3);
+  left: var(--space-3);
+  z-index: var(--z-modal);
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface-raised);
+  border: var(--hairline) solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  transform: translateY(-150%);
+  transition: transform var(--dur-fast) var(--ease-standard);
+}
+.skip-link:focus { transform: translateY(0); }
