@@ -5,6 +5,8 @@
 
 This repository is a mixed-license bundle, not an "all MIT" release package. The source code of the fork is MIT-licensed, while some bundled third-party libraries and assets remain under their own licenses.
 
+> **Deployment note (Arden Tsang's website, 2026):** In this vendored copy, two changes make the bundle cleanly redistributable: (1) the non-MIT Milky-Way image `assets/img/milkyway.jpg` (CC-BY-NC, described below) was **replaced** with an original, procedurally-generated starfield released as **CC0 / public domain** — so the CC-BY-NC description below no longer applies to the shipped file; (2) the runtime Font Awesome CDN load was **removed**. Everything else is unchanged. Full details: `VENDORING_NOTES.md`.
+
  * [dat.GUI](https://github.com/dataarts/dat.gui) (`js-libs/dat.gui.min.js`) licensed under the [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0)
  * Other JavaScript libraries in `js-libs/` are licensed under the [MIT license](https://tldrlegal.com/license/mit-license)
    - [jQuery](https://jquery.org)
