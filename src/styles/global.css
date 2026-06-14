@@ -85,14 +85,19 @@
   --font-mono: ui-monospace, "SF Mono", "SFMono-Regular", "Menlo",
                "Cascadia Mono", "Roboto Mono", "Consolas", monospace;
 
-  /* OPTIONAL serif "display" voice — a SEPARATE token, NOT the default.
-     Headings stay on --font-sans; opt a heading into the scholarly serif with
-     the .display / .heading-serif utility to A/B it later without touching
-     anything else. Charter ships on macOS/iOS, Georgia is the universal
-     fallback — zero webfont cost, so first paint stays instant. Used at the
-     same two weights (400/500); font-synthesis:none below forbids faux bold. */
-  --font-display: "Charter", "Source Serif 4", "Georgia", "Times New Roman",
-                  serif;
+  /* Self-hosted webfonts (notebook type system) — loaded in Layout.astro via
+     @fontsource. Fraunces is the main reading + heading serif (the voice for
+     "everything that isn't a title"). Rock Salt is the rough graphite TITLE
+     face, used in notebook mode only (with the #nb-graphite grain filter). Mali
+     is a pencil HAND, self-hosted so it stays a one-line swap: to make titles
+     Mali instead of Rock Salt, set --font-title to var(--font-hand). All keep
+     font-synthesis:none (set on body) so no weight/slant is ever faked. */
+  --font-serif: "Fraunces Variable", "Charter", "Source Serif 4", "Georgia", serif;
+  --font-title: "Rock Salt", "Fraunces Variable", "Charter", serif;
+  --font-hand:  "Mali", "Segoe Script", "Bradley Hand", cursive;
+
+  /* The scholarly serif voice (.display / .heading-serif) is now Fraunces. */
+  --font-display: var(--font-serif);
 
   /* EXACTLY TWO weights — regular + medium. Never heavier. */
   --weight-regular: 400;
@@ -287,18 +292,25 @@
   --border-strong:  #c7b793;
   --border-faint:   #e7ddc6;
 
-  --text-primary:   #2a2317;  /* ink — ~13:1 on --surface */
-  --text-secondary: #54493a;  /* ~7:1 */
-  --text-muted:     #6d6249;  /* ~5:1 (AA) */
-  --text-faint:     #9a8f76;  /* decorative only */
+  /* Ink = pencil graphite (neutral, faintly cool) — not sepia. Words read like
+     they're written in pencil on the cream paper. */
+  --text-primary:   #2b2b31;  /* graphite ink */
+  --text-secondary: #4f4f57;
+  --text-muted:     #71717a;  /* labels/metadata (AA) */
+  --text-faint:     #9d9da6;  /* decorative only */
 
-  --accent:         #7a5224;  /* sepia-brown ink (links, eyebrow) — ~6.4:1 */
-  --accent-fill:    #6e4a1f;
-  --accent-strong:  #5c3d18;
-  --accent-quiet:   #6e4a1f;
-  --accent-soft:    rgba(122, 82, 36, 0.12);
-  --accent-line:    rgba(122, 82, 36, 0.34);
-  --accent-contrast:#fbf5e8;
+  /* Accent = a darker pencil mark (links, eyebrow, dock, indicators). */
+  --accent:         #3a3a43;
+  --accent-fill:    #2b2b31;
+  --accent-strong:  #1d1d24;  /* hover = "pressed harder" */
+  --accent-quiet:   #2b2b31;
+  --accent-soft:    rgba(45, 45, 53, 0.10);
+  --accent-line:    rgba(45, 45, 53, 0.32);
+  --accent-contrast:#f6f1e6;
+
+  /* Graph-paper grid + grain for island cards (rules just below this block). */
+  --nb-grid:        rgba(60, 60, 70, 0.06);
+  --nb-grid-cell:   22px;
 
   --positive:       #4a7a3c;
   --warning:        #9a6f1f;
@@ -315,6 +327,58 @@
       0 12px 30px rgba(60, 48, 28, 0.16);
 
   color-scheme: light;
+}
+
+/* ---- Notebook tactility: grid paper + faint grain on island cards ----------
+   Scoped to notebook mode. The quiet island variant (e.g. the CV body) opts
+   OUT, staying clean paper for a purely-informative page. The grid lines and
+   grain are graphite (pencil), matching the ink. */
+:root[data-theme="notebook"] .island:not(.island--quiet) {
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E"),
+    repeating-linear-gradient(to right,  var(--nb-grid) 0 1px, transparent 1px var(--nb-grid-cell)),
+    repeating-linear-gradient(to bottom, var(--nb-grid) 0 1px, transparent 1px var(--nb-grid-cell));
+}
+
+/* Notebook: graph paper fills the page background too (behind the islands). On
+   the home page the black-hole iframe covers this; the static pages show paper.
+   (The lensed grid behind the black hole itself is drawn in the renderer.) */
+:root[data-theme="notebook"] .bg-layer {
+  background-image:
+    repeating-linear-gradient(to right,  var(--nb-grid) 0 1px, transparent 1px var(--nb-grid-cell)),
+    repeating-linear-gradient(to bottom, var(--nb-grid) 0 1px, transparent 1px var(--nb-grid-cell));
+}
+
+/* Notebook: prose links get a pencil underline — graphite colour alone is too
+   quiet to read as a link on paper. */
+:root[data-theme="notebook"] :where(p, li, h1, h2, h3, h4, h5, h6, figcaption, blockquote, .prose) a {
+  text-decoration: underline;
+  text-decoration-color: var(--accent-line);
+  text-underline-offset: 0.18em;
+}
+
+/* ---- Notebook TYPE: rough graphite titles + the pencil hand ----------------
+   Titles (h1–h3) are set in Rock Salt and given a medium graphite grain via the
+   #nb-graphite SVG filter (defined in Layout.astro). Notebook ONLY — the dark
+   "real" theme keeps clean Fraunces titles with no grain. Body and everything
+   else stay Fraunces (set on <body>). Rock Salt has no true lowercase, so titles
+   read as a rough hand-lettered cap line — that's the intended look. To dial the
+   reach, edit the :where(...) list (e.g. drop h3 to spare card titles). */
+:root[data-theme="notebook"] :where(h1, h2, h3) {
+  font-family: var(--font-title);
+  font-weight: var(--weight-regular);
+  letter-spacing: 0.005em;   /* Rock Salt wants air, not the tight heading tracking */
+  line-height: 1.24;         /* room for rough ascenders/descenders under the filter */
+  filter: url(#nb-graphite);
+}
+
+/* The pencil HAND — Mali italic, self-hosted for easy swapping. Add .hand to
+   any accent you want hand-written (a margin note, a caption, a pull-quote); it
+   picks up the same graphite grain. Legible enough for short phrases. */
+:root[data-theme="notebook"] .hand {
+  font-family: var(--font-hand);
+  font-style: italic;
+  filter: url(#nb-graphite);
 }
 
 /* ==========================================================================
@@ -383,7 +447,8 @@ p, h1, h2, h3, h4, li, figcaption { overflow-wrap: break-word; }
    ========================================================================== */
 
 body {
-  font-family: var(--font-sans);
+  font-family: var(--font-serif);
+  font-optical-sizing: auto;
   font-weight: var(--weight-regular);
   font-size: var(--text-base);
   color: var(--text-primary);

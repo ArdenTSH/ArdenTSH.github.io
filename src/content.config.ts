@@ -15,4 +15,17 @@ const writing = defineCollection({
   }),
 });
 
-export const collections = { writing };
+// Research write-ups (Phase 1.3). One Markdown file per research direction in
+// src/content/research/ — the FILE NAME is the slug (cosmology.md →
+// /research/cosmology). The card label + one-line blurb still live in
+// src/config/site.ts; this file's prose is the BODY of the page. Edit a file,
+// save, the page updates. Frontmatter is optional (add `updated:` if you like).
+const research = defineCollection({
+  loader: glob({ pattern: "**/[^_]*.md", base: "./src/content/research" }),
+  schema: z.object({
+    updated: z.coerce.date().optional(),
+    draft: z.boolean().default(false),
+  }),
+});
+
+export const collections = { writing, research };

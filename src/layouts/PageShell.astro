@@ -40,7 +40,9 @@ const { title, description, active = "" } = Astro.props;
     position: fixed;
     inset: 0;
     z-index: var(--z-background);
-    background: var(--bg);
+    /* background-color (not the `background` shorthand) so the notebook grid
+       background-image in global.css isn't reset. */
+    background-color: var(--bg);
   }
   .page {
     position: relative;
@@ -57,7 +59,9 @@ const { title, description, active = "" } = Astro.props;
   .page :where(a[href], button, input, textarea, select, label, summary, [tabindex], .island) {
     pointer-events: auto;
   }
-  /* One centred column; every direct child (an island) is the same width. */
+  /* The island column. Same width for every child; centred by default, but on
+     wide screens it shifts to the RIGHT (see the media query below) so the left
+     of the viewport stays open for the background scene. */
   .column {
     flex: 1 0 auto;
     width: 100%;
@@ -67,7 +71,9 @@ const { title, description, active = "" } = Astro.props;
     padding-top: var(--space-8);
     display: flex;
     flex-direction: column;
-    gap: var(--space-6);
+    /* Roomier spacing between islands so the curved scroll plays out over more
+       travel — you "cover more ground" per island. Bump to --space-9 for more. */
+    gap: var(--space-8);
   }
   /* Programmatic focus target for the skip link — no visible ring needed here. */
   .column:focus {
@@ -83,6 +89,17 @@ const { title, description, active = "" } = Astro.props;
     padding-inline: var(--space-5);
     margin-top: var(--space-7);
   }
+  /* Wide screens: pin the column (and foot) to the LEFT, leaving the right of
+     the viewport open for the background. Below 900px it stays centred — and
+     the heavy background isn't loaded on small screens anyway. Tune the left
+     gutter (--space-7) to move the islands closer to / further from the edge.
+     (Swap to `auto var(--space-7)` to put them back on the right.) */
+  @media (min-width: 900px) {
+    .column,
+    .foot {
+      margin-inline: var(--space-7) auto;
+    }
+  }
 </style>
 
 <script>
@@ -94,7 +111,11 @@ const { title, description, active = "" } = Astro.props;
   const column = document.querySelector(".column");
   if (column && !reduceMotion.matches) {
     const items = Array.from(column.children) as HTMLElement[];
-    const MAX_ANGLE = 18; // degrees of tilt toward the viewport edges (edit me to taste)
+    const MAX_ANGLE = 15; // tilt (deg) a SMALL island reaches near the viewport edge
+    const PERSPECTIVE = 2400; // deeper than before → gentler foreshortening
+    // An island this tall (px) gets the full tilt; TALLER islands tilt
+    // proportionally LESS, so a big card never swings flat into the screen.
+    const REF_HEIGHT = 380;
     let ticking = false;
     const apply = () => {
       const vh = window.innerHeight || 1;
@@ -103,10 +124,11 @@ const { title, description, active = "" } = Astro.props;
         const rect = el.getBoundingClientRect();
         const centre = rect.top + rect.height / 2;
         const d = Math.max(-1, Math.min(1, (centre - mid) / vh)); // -1..1
-        const angle = (-d * MAX_ANGLE).toFixed(2);
-        const scale = (1 - Math.abs(d) * 0.04).toFixed(3);
-        el.style.transform = `perspective(1500px) rotateX(${angle}deg) scale(${scale})`;
-        el.style.opacity = (1 - Math.abs(d) * 0.18).toFixed(3);
+        const damp = Math.min(1, REF_HEIGHT / Math.max(rect.height, 1));
+        const angle = (-d * MAX_ANGLE * damp).toFixed(2);
+        const scale = (1 - Math.abs(d) * 0.03).toFixed(3);
+        el.style.transform = `perspective(${PERSPECTIVE}px) rotateX(${angle}deg) scale(${scale})`;
+        el.style.opacity = (1 - Math.abs(d) * 0.14).toFixed(3);
       }
       ticking = false;
     };

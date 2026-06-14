@@ -1,10 +1,11 @@
 ---
-// CV (Phase 1.4 start). The actual PDF is embedded so visitors read it without
-// leaving the site, plus links to open it as a browser PDF or download it.
-// Drop your PDF at: public/cv/Arden_Tsang_CV.pdf  (overwrite to update it).
+// CV (Phase 1.4). The CV is rendered NATIVELY — in the site's own type, as one
+// scrolling document — from src/content/cv.md (edit that file to update it).
+// The PDF stays at public/cv/Arden_Tsang_CV.pdf as the formatted download.
 import PageShell from "../layouts/PageShell.astro";
 import Island from "../components/Island.astro";
 import { Icon } from "astro-icon/components";
+import { Content as CV } from "../content/cv.md";
 
 const pdfPath = "/cv/Arden_Tsang_CV.pdf";
 ---
@@ -13,7 +14,7 @@ const pdfPath = "/cv/Arden_Tsang_CV.pdf";
   <Island as="header">
     <p class="eyebrow">Curriculum vitae</p>
     <h1>CV</h1>
-    <p class="lead">Read it here, or open the PDF — no need to leave the page.</p>
+    <p class="lead">Read it in full below — or open the formatted PDF.</p>
     <p class="cv-actions">
       <a class="cv-action" href={pdfPath} target="_blank" rel="noopener">
         <Icon name="tabler:external-link" aria-hidden="true" /> Open PDF
@@ -25,17 +26,7 @@ const pdfPath = "/cv/Arden_Tsang_CV.pdf";
   </Island>
 
   <Island variant="quiet">
-    <div class="cv-embed">
-      <iframe src={pdfPath} title="Arden Tsang — curriculum vitae" loading="lazy"
-      ></iframe>
-    </div>
-    <p class="cv-fallback text-muted">
-      If the PDF doesn't display in your browser, <a
-        href={pdfPath}
-        target="_blank"
-        rel="noopener">open it in a new tab</a
-      >.
-    </p>
+    <div class="prose cv-body"><CV /></div>
   </Island>
 </PageShell>
 
@@ -54,23 +45,53 @@ const pdfPath = "/cv/Arden_Tsang_CV.pdf";
     width: 16px;
     height: 16px;
   }
-  .cv-embed {
-    width: 100%;
-    height: min(85vh, 1100px);
-    min-height: 540px;
-    border: var(--hairline) solid var(--border);
-    border-radius: var(--radius-sm);
-    overflow: hidden;
-    background: var(--surface-alt);
+
+  /* The CV reads as a document. Styles target the rendered Markdown, so they
+     use :global() (Astro scoping doesn't reach <Content/>'s output). */
+  .cv-body :global(h2) {
+    font-size: var(--text-md);
+    font-weight: var(--weight-medium);
+    color: var(--text-secondary);
+    margin-top: var(--space-6);
+    padding-bottom: var(--space-2);
+    border-bottom: var(--hairline) solid var(--border-faint);
   }
-  .cv-embed iframe {
-    width: 100%;
-    height: 100%;
-    border: 0;
-    display: block;
+  .cv-body :global(h2:first-child) {
+    margin-top: 0;
   }
-  .cv-fallback {
+  .cv-body :global(h3) {
+    font-size: var(--text-base);
+    font-weight: var(--weight-medium);
+    margin-top: var(--space-5);
+  }
+  /* The "meta" line — the paragraph immediately after an entry title. */
+  .cv-body :global(h3 + p) {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-label);
+    color: var(--text-muted);
+    margin-top: var(--space-1);
+  }
+  .cv-body :global(p) {
     margin-top: var(--space-3);
+  }
+  .cv-body :global(ul) {
+    margin-top: var(--space-3);
+    padding-left: 1.15rem;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .cv-body :global(li) {
+    color: var(--text-secondary);
     font-size: var(--text-sm);
+    line-height: var(--leading-snug);
+    max-width: var(--measure);
+  }
+  .cv-body :global(li)::marker {
+    color: var(--text-faint);
+  }
+  .cv-body :global(strong) {
+    color: var(--text-primary);
   }
 </style>

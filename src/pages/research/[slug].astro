@@ -1,20 +1,25 @@
 ---
-// Research direction page (Phase 0.5 stub). One file serves all four areas via
-// a dynamic route. Header (with the back link) and body each live in an island;
-// each area gets its own background + real content in later phases.
+// Research direction page. One file serves all four areas via a dynamic route.
+// The header (label + blurb) comes from src/config/site.ts; the BODY is the
+// Markdown write-up in src/content/research/<slug>.md — edit that file to change
+// what shows here (plain Markdown: paragraphs, ## subheadings, links, lists).
 import PageShell from "../../layouts/PageShell.astro";
 import Island from "../../components/Island.astro";
 import { Icon } from "astro-icon/components";
+import { getCollection, render } from "astro:content";
 import { researchAreas } from "../../config/site";
 
-export function getStaticPaths() {
+export async function getStaticPaths() {
+  const entries = await getCollection("research");
   return researchAreas.map((area) => ({
     params: { slug: area.slug },
-    props: { area },
+    props: { area, entry: entries.find((e) => e.id === area.slug) ?? null },
   }));
 }
 
-const { area } = Astro.props;
+const { area, entry } = Astro.props;
+const rendered = entry ? await render(entry) : null;
+const Content = rendered?.Content;
 ---
 
 <PageShell title={area.label} active={area.slug}>
@@ -27,11 +32,14 @@ const { area } = Astro.props;
     <p class="lead">{area.blurb}</p>
   </Island>
 
-  <Island>
-    <p class="text-secondary">
-      Full write-up, figures and attached outputs arrive in Phase 1. This page
-      exists so the route, layout and navigation already work end to end.
-    </p>
+  <Island class="prose">
+    {
+      Content ? (
+        <Content />
+      ) : (
+        <p class="text-secondary">Write-up coming soon.</p>
+      )
+    }
   </Island>
 </PageShell>
 

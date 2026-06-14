@@ -88,17 +88,19 @@ function Shader(mustacheTemplate) {
         // Pure JS-side runtime switch — never recompiles the ray-tracer.
         render_style: 'photoreal',
         sketch: {
-            paper:           [0.94, 0.90, 0.82], // tan/cream paper
-            ink:             [0.24, 0.18, 0.13], // sepia-brown ink
+            paper:           [0.94, 0.90, 0.82], // cream paper (site paper shade TBD)
+            ink:             [0.17, 0.17, 0.20], // pencil graphite (was sepia-brown)
             ink_strength:    0.80,
             edge_threshold:  0.07,
             edge_softness:   0.10,
-            sepia_amount:    0.50,
+            sepia_amount:    0.30,                // less wash now the ink is grey
             hatch_amount:    0.28,
             hatch_scale:     6.0,
             paper_grain:     0.05,
             line_width:      1.3,
-            overall_strength:0.85
+            overall_strength:0.85,
+            stroke_grain:    0.80,  // how broken-up the pencil strokes look (0..1)
+            star_fill:       0.90   // fill bright points as ink dots vs outline them
         },
         planet: {
             enabled: true,
