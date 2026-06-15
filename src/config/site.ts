@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const site = {
-  name: "Arden 曾善蘅",
+  name: "Arden Tsang (曾)善蘅",
   // Small mono kicker above the name on the home hero.
   eyebrow: "Theoretical & computational physics",
   // One-line identity — the home hero lead.
@@ -57,9 +57,10 @@ export const researchAreas: ResearchArea[] = [
   },
   {
     slug: "ai",
-    label: "Machine learning & AI safety",
-    short: "ML & safety",
-    blurb: "Symmetry-preserving models, interpretability, and AI safety.",
+    label: "Interpretability & AI safety",
+    short: "AI safety",
+    blurb:
+      "I approach machine learning the way I approach physics — by looking for the structure inside the system. AI safety is where I want that habit to matter most.",
     icon: "tabler:shield",
   },
 ];
