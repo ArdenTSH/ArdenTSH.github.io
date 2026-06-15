@@ -36,6 +36,8 @@ function setupSketch() {
         'uniform float overallStrength;',
         'uniform float strokeGrain;',
         'uniform float starFill;',
+        'uniform float diskLineScale;',
+        'uniform float diskInkBoost;',
         'varying vec2 vUv;',
         '',
         'float luma(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }',
@@ -124,6 +126,28 @@ function setupSketch() {
         '    // and the edge ring is fully removed so it reads as a dot, not an O.',
         '    float pointy = smoothstep(0.04, 0.16, mc - far);',
         '    float star = pointy * smoothstep(0.05, 0.16, mc);',
+        '',
+        '    // ---- DISK: THICK bold pencil. The disk + ring are the bright EXTENDED',
+        '    //      region (far-neighbourhood bright). Thicken its strokes with a local',
+        '    //      RANGE (dilation) edge -- ink a solid band of width ~2*R around every',
+        '    //      disk edge, so the lines are genuinely THICK, not merely dense. Stars',
+        '    //      and the faint grid are excluded by the mask. ----',
+        '    float diskMask = smoothstep(0.04, 0.18, far) * (1.0 - pointy);',
+        '    float diskR = lineWidth * diskLineScale;',
+        '    vec2 tu = diskR / resolution;',
+        '    float dmn = mc, dmx = mc;',
+        '    float dd0 = luma(texture2D(tDiffuse, vUv + tu*vec2( 1.0,  0.0)).rgb); dmn=min(dmn,dd0); dmx=max(dmx,dd0);',
+        '    float dd1 = luma(texture2D(tDiffuse, vUv + tu*vec2(-1.0,  0.0)).rgb); dmn=min(dmn,dd1); dmx=max(dmx,dd1);',
+        '    float dd2 = luma(texture2D(tDiffuse, vUv + tu*vec2( 0.0,  1.0)).rgb); dmn=min(dmn,dd2); dmx=max(dmx,dd2);',
+        '    float dd3 = luma(texture2D(tDiffuse, vUv + tu*vec2( 0.0, -1.0)).rgb); dmn=min(dmn,dd3); dmx=max(dmx,dd3);',
+        '    float dd4 = luma(texture2D(tDiffuse, vUv + tu*vec2( 0.7,  0.7)).rgb); dmn=min(dmn,dd4); dmx=max(dmx,dd4);',
+        '    float dd5 = luma(texture2D(tDiffuse, vUv + tu*vec2(-0.7,  0.7)).rgb); dmn=min(dmn,dd5); dmx=max(dmx,dd5);',
+        '    float dd6 = luma(texture2D(tDiffuse, vUv + tu*vec2( 0.7, -0.7)).rgb); dmn=min(dmn,dd6); dmx=max(dmx,dd6);',
+        '    float dd7 = luma(texture2D(tDiffuse, vUv + tu*vec2(-0.7, -0.7)).rgb); dmn=min(dmn,dd7); dmx=max(dmx,dd7);',
+        '    float diskRange = dmx - dmn;',
+        '    float edgeThick = smoothstep(edgeThreshold, edgeThreshold + edgeSoftness, diskRange);',
+        '    float boldInk = edgeThick * mix(1.0, tooth, clamp(strokeGrain, 0.0, 1.0)) * diskMask * inkStrength * diskInkBoost;',
+        '    strokeInk = max(strokeInk, clamp(boldInk, 0.0, 1.0));',
         '    strokeInk *= (1.0 - pointy);',
         '',
         '    // ---- compose ink marks onto the toned paper ----',
@@ -174,7 +198,9 @@ function setupSketch() {
             lineWidth:       { type: 'f',  value: 1.3 },
             overallStrength: { type: 'f',  value: 0.85 },
             strokeGrain:     { type: 'f',  value: 0.80 },
-            starFill:        { type: 'f',  value: 1.00 }
+            starFill:        { type: 'f',  value: 1.00 },
+            diskLineScale:   { type: 'f',  value: 3.5 },
+            diskInkBoost:    { type: 'f',  value: 1.0 }
         },
         vertexShader: ppVertexShader,
         fragmentShader: sketchFS,
@@ -216,6 +242,8 @@ function setupSketch() {
             if (s.overall_strength!== undefined) u.overallStrength.value = s.overall_strength;
             if (s.stroke_grain    !== undefined) u.strokeGrain.value     = s.stroke_grain;
             if (s.star_fill       !== undefined) u.starFill.value        = s.star_fill;
+            if (s.disk_line_scale !== undefined) u.diskLineScale.value   = s.disk_line_scale;
+            if (s.disk_ink_boost  !== undefined) u.diskInkBoost.value    = s.disk_ink_boost;
         },
 
         // sceneRT already holds the final LDR frame (bloom/TAA bypassed). Blit RT -> screen.

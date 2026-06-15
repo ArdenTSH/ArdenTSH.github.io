@@ -101,7 +101,9 @@ function Shader(mustacheTemplate) {
             overall_strength:0.85,
             stroke_grain:    0.80,  // how broken-up the pencil strokes look (0..1)
             star_fill:       1.00,  // fill bright points as solid, consistent ink dots
-            grid_strength:   0.30   // notebook graph-paper grid on the lensed sky (sketch only)
+            grid_strength:   0.30,  // notebook graph-paper grid on the lensed sky (sketch only)
+            disk_line_scale: 3.5,   // accretion disk stroke THICKNESS (dilation band radius scale)
+            disk_ink_boost:  1.0    // extra ink weight on those bold disk strokes
         },
         planet: {
             enabled: true,
