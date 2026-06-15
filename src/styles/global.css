@@ -93,7 +93,7 @@
      Mali instead of Rock Salt, set --font-title to var(--font-hand). All keep
      font-synthesis:none (set on body) so no weight/slant is ever faked. */
   --font-serif: "Fraunces Variable", "Charter", "Source Serif 4", "Georgia", serif;
-  --font-title: "Rock Salt", "Fraunces Variable", "Charter", serif;
+  --font-title: "Rock Salt", "Ma Shan Zheng", "Fraunces Variable", "Charter", serif;
   --font-hand:  "Mali", "Segoe Script", "Bradley Hand", cursive;
 
   /* The scholarly serif voice (.display / .heading-serif) is now Fraunces. */

@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@fontsource-variable/fraunces": "^5.2.9",
+    "@fontsource/ma-shan-zheng": "^5.2.9",
     "@fontsource/mali": "^5.2.8",
     "@fontsource/rock-salt": "^5.2.8",
     "@iconify-json/tabler": "^1.2.35",

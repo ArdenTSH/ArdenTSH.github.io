@@ -5,14 +5,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const site = {
-  name: "Arden Tsang",
+  name: "Arden 曾善蘅",
   // Small mono kicker above the name on the home hero.
   eyebrow: "Theoretical & computational physics",
   // One-line identity — the home hero lead.
   tagline: "Symmetry and computation, from quantum materials to cosmology.",
   // The home hero paragraph: who you are, in a few honest sentences.
   intro:
-    "I'm heading to Cambridge for the MASt in Astrophysics, graduating from an undergrad degree in Physics with Theoretical Physics at King's College London, with the aim to do a PhD in Theoretical Physics. \
+    "I'm heading to Cambridge for the MASt in Astrophysics, graduating from BSc Physics with Theoretical Physics at King's College London, with the aim to do a PhD in Theoretical Physics. \
     My path: computational materials, particle-physics machine learning, \
     now theoretical cosmology. I am fascinated by the symmetries of nature and how to observe them. Right now I'm looking into the beginning of the unvierse, asking whether \
     cosmological-collider signatures survive into the gravitational-wave background. \
@@ -74,9 +74,9 @@ export interface ContactLink {
 // placeholders are intentional until you paste them in.
 export const contactLinks: ContactLink[] = [
   { label: "Email", href: `mailto:${site.email}`, icon: "tabler:mail" },
-  { label: "Google Scholar", href: "https://scholar.google.co.uk/citations?user=yJ3dzdAAAAAJ&hl=en", icon: "tabler:school" },
-  { label: "Inspire HEP", href: "https://inspirehep.net/authors/3136464", icon: "tabler:atom" },
-  { label: "ORCID", href: "https://orcid.org/0009-0008-0782-5394", icon: "tabler:id" },
-  { label: "LinkedIn", href: "https://www.linkedin.com/in/arden-tsang-22224b2a0/", icon: "tabler:brand-linkedin" },
-  { label: "GitHub", href: "https://github.com/ArdenTSH", icon: "tabler:brand-github" },
+  { label: "Google Scholar", href: 'https://scholar.google.co.uk/citations?user=yJ3dzdAAAAAJ&hl=en', icon: "tabler:school" },
+  { label: "Inspire HEP", href: 'https://inspirehep.net/authors/3136464', icon: "tabler:atom" },
+  { label: "ORCID", href: 'https://orcid.org/0009-0008-0782-5394', icon: "tabler:id" },
+  { label: "LinkedIn", href: 'https://www.linkedin.com/in/arden-tsang-22224b2a0/', icon: "tabler:brand-linkedin" },
+  { label: "GitHub", href: 'https://github.com/ArdenTSH', icon: "tabler:brand-github" },
 ];
