@@ -1,0 +1,80 @@
+---
+// Grid toggle (home only, notebook only). Shows/hides the lensed graph-paper
+// grid drawn on the black-hole background. The choice is persisted in
+// localStorage ("bh-grid") and applied to the renderer via window.bhSetGrid
+// (defined by BlackHole.astro). Sits bottom-right, opposite the mode toggle.
+// Hidden outside notebook mode (the grid is sketch-only) and below 900px (the
+// black hole is desktop-only).
+---
+
+<button type="button" class="grid-toggle" aria-label="Show or hide the background grid">
+  <span class="grid-toggle__label" data-grid-label>hide grid</span>
+</button>
+
+<style>
+  .grid-toggle {
+    display: none;
+  }
+  :root[data-theme="notebook"] .grid-toggle {
+    position: fixed;
+    bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+    right: var(--space-4);
+    z-index: var(--z-dock);
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 13px;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-label);
+    color: var(--text-secondary);
+    background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
+    border: var(--hairline) solid var(--border-strong);
+    border-radius: var(--radius-pill);
+    box-shadow: var(--shadow-dock);
+    cursor: pointer;
+    transition:
+      color var(--dur-fast) var(--ease-standard),
+      border-color var(--dur-fast) var(--ease-standard);
+  }
+  :root[data-theme="notebook"] .grid-toggle:hover {
+    color: var(--text-primary);
+    border-color: var(--accent-line);
+  }
+  .grid-toggle:focus-visible {
+    outline: none;
+    box-shadow: var(--ring);
+  }
+  /* The black hole (and its grid) only loads on wide screens. */
+  @media (max-width: 899px) {
+    :root[data-theme="notebook"] .grid-toggle {
+      display: none;
+    }
+  }
+</style>
+
+<script>
+  const btn = document.querySelector<HTMLButtonElement>(".grid-toggle");
+  const label = document.querySelector<HTMLElement>("[data-grid-label]");
+  const isOn = () => {
+    try {
+      return (localStorage.getItem("bh-grid") || "on") !== "off";
+    } catch (e) {
+      return true;
+    }
+  };
+  // The label says what a click will do.
+  const renderLabel = (on: boolean) => {
+    if (label) label.textContent = on ? "hide grid" : "show grid";
+  };
+  renderLabel(isOn());
+  btn?.addEventListener("click", () => {
+    const next = !isOn();
+    try {
+      localStorage.setItem("bh-grid", next ? "on" : "off");
+    } catch (e) {}
+    const w = window as any;
+    if (typeof w.bhSetGrid === "function") w.bhSetGrid(next);
+    renderLabel(next);
+  });
+</script>

@@ -939,6 +939,23 @@ vec4 trace_ray(vec3 ray) {
         }
 
         color += galaxy_color(tex_coord, bg_doppler) * GALAXY_BRIGHTNESS * look_galaxy_gain * vol_transmittance * interior_boost * bg_boost;
+
+        // ── Notebook graph-paper grid, drawn on the LENSED sky ──────────────
+        // Built from the gravitationally-bent exit direction (via tex_coord), so
+        // the lines curve around the hole and pile up at the Einstein ring for
+        // free. Added as faint bright ridges; the sketch post-pass Sobel inks
+        // them into constant-width pencil strokes — lensing bends the line, not
+        // its weight. bg_grid_strength is 0 in photoreal mode, so sketch-only.
+        if (bg_grid_strength > 0.001) {
+            vec2 gcoord = tex_coord * 8.0;                   // cells across the sky UV (fewer = bigger squares)
+            vec2 gdist  = abs(fract(gcoord) - 0.5);          // 0 at cell centre, 0.5 at the lines
+            // VERY thin spikes (not a wide band) so the Sobel inks single fine
+            // pencil strokes that break up rough — a sketched grid, not a
+            // distorting sheet of paper. Narrow the band -> thinner line.
+            vec2 gband  = smoothstep(0.4985, 0.5, gdist);
+            float grid  = max(gband.x, gband.y);
+            color.rgb  += vec3(grid) * bg_grid_strength * vol_transmittance;
+        }
     }
 
     return color*ray_intensity;

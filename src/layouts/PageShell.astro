@@ -7,6 +7,7 @@
 import Layout from "./Layout.astro";
 import Dock from "../components/Dock.astro";
 import ModeToggle from "../components/ModeToggle.astro";
+import GridToggle from "../components/GridToggle.astro";
 
 interface Props {
   title: string;
@@ -33,6 +34,8 @@ const { title, description, active = "" } = Astro.props;
 
   <Dock active={active} />
   <ModeToggle />
+  {/* Grid toggle: home only (it controls the black-hole background grid). */}
+  {active === "home" && <GridToggle />}
 </Layout>
 
 <style>

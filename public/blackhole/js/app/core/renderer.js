@@ -22,6 +22,7 @@ var bloomPass = null;
 var taaPass = null;
 var sketchPass = null;
 var DEFAULT_RENDER_STYLE = 'photoreal'; // 'photoreal' | 'sketch'
+var gridEnabled = true;                 // notebook lensed graph-paper grid on/off (runtime toggle)
 var shaderUniforms = null;
 var baseDevicePixelRatio = Math.max(window.devicePixelRatio || 1.0, 1.0);
 var isMobileClient = false;
@@ -1022,6 +1023,8 @@ function init(glslSource, textures) {
 
         grav_blueshift_factor: { type: "f", value: 1.0 },
 
+        bg_grid_strength: { type: "f", value: 0.0 },
+
         star_texture: { type: "t", value: textures.stars },
         galaxy_texture: { type: "t", value: textures.galaxy },
         planet_texture: { type: "t", value: textures.moon },
@@ -1086,6 +1089,12 @@ function init(glslSource, textures) {
         uniforms.look_star_gain.value = shader.parameters.look.star_gain;
         uniforms.look_galaxy_gain.value = shader.parameters.look.galaxy_gain;
         uniforms.look_tonemap_mode.value = parseFloat(shader.parameters.look.tonemap_mode);
+
+        // Notebook graph-paper grid: only in sketch mode, and only when toggled on.
+        uniforms.bg_grid_strength.value =
+            (gridEnabled && shader.parameters.render_style === 'sketch' &&
+             shader.parameters.sketch && shader.parameters.sketch.grid_strength != null)
+                ? shader.parameters.sketch.grid_strength : 0.0;
 
         uniforms.torus_r0.value = shader.parameters.torus.r0;
         uniforms.torus_h_ratio.value = shader.parameters.torus.h_ratio;
@@ -1294,11 +1303,27 @@ function init(glslSource, textures) {
         if (styleFromUrl === 'sketch') setRenderStyle('sketch');
         else if (DEFAULT_RENDER_STYLE === 'sketch') setRenderStyle('sketch');
     } catch (e) {}
+
+    // ===== Grid toggle (notebook graph-paper on the lensed sky) =====
+    function setGrid(on) {
+        gridEnabled = !!on;
+        shader.needsUpdate = true; // force a redraw so the change shows immediately
+    }
+    window.blackHoleSetGrid = setGrid;
+    try {
+        var gridFromUrl = new URLSearchParams(window.location.search).get('grid');
+        if (gridFromUrl === '0') setGrid(false);
+        else if (gridFromUrl === '1') setGrid(true);
+    } catch (e) {}
+
     window.addEventListener('message', function (ev) {
         if (ev.source !== window.parent) return;
         var d = ev.data;
         if (d && d.type === 'bh:setStyle' && (d.style === 'sketch' || d.style === 'photoreal')) {
             setRenderStyle(d.style);
+        }
+        if (d && d.type === 'bh:setGrid') {
+            setGrid(!!d.on);
         }
     });
 }

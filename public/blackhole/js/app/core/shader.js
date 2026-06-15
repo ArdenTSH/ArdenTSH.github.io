@@ -100,7 +100,8 @@ function Shader(mustacheTemplate) {
             line_width:      1.3,
             overall_strength:0.85,
             stroke_grain:    0.80,  // how broken-up the pencil strokes look (0..1)
-            star_fill:       1.00   // fill bright points as solid, consistent ink dots
+            star_fill:       1.00,  // fill bright points as solid, consistent ink dots
+            grid_strength:   0.30   // notebook graph-paper grid on the lensed sky (sketch only)
         },
         planet: {
             enabled: true,
