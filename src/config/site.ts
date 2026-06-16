@@ -37,7 +37,7 @@ export const researchAreas: ResearchArea[] = [
     slug: "cosmology",
     label: "Cosmology & astrophysics",
     short: "Cosmology",
-    eyebrow: "The Early Universe",
+    eyebrow: "Genesis",
     blurb:
       "Inflationary correlators, the cosmological collider, and scalar-induced gravitational waves.",
     icon: "tabler:planet",
@@ -45,8 +45,8 @@ export const researchAreas: ResearchArea[] = [
   {
     slug: "neutrino",
     label: "Neutrinos at the edge",
-    short: "Neutrino",
-    eyebrow: "The Elusive Neutrino",
+    short: "Neutrinos",
+    eyebrow: "Beyond the Standard Model",
     blurb: "Quantised CNNs and Edge-TPU triggers for LArTPC detectors.",
     icon: "tabler:cpu",
   },
