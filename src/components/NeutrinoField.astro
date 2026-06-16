@@ -1,0 +1,254 @@
+---
+// NeutrinoField — ambient background for the neutrino page. A liquid-argon
+// detector mostly sees nothing (neutrinos are invisible); once in a while one
+// INTERACTS and a cascade DEVELOPS causally outward from the vertex, deposited
+// as fine pixels the way a LArTPC reads out. Each event picks its OWN forward
+// axis (random per event); within it the EM shower and the hadronic tracks go
+// the SAME way, splayed into adjacent lobes — as really happens. The EM shower
+// is a real cascade: π⁰ → 2γ → e⁺e⁻ → bremsstrahlung γ → e⁺e⁻ → … Three CNN
+// classes cycle (νμ CC long muon, νe CC electron shower, NC no lepton). Faint
+// background noise + cosmic-ray tracks, as real detectors carry. Colours from
+// the theme tokens (pencil in notebook, glow in dark). Paused offscreen; one
+// static event under reduced-motion.
+---
+
+<canvas class="nu-field" aria-hidden="true"></canvas>
+
+<style>
+  .nu-field {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+</style>
+
+<script>
+  const canvas = document.querySelector<HTMLCanvasElement>("canvas.nu-field");
+  const ctx = canvas?.getContext("2d");
+  if (canvas && ctx) {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const TAU = Math.PI * 2;
+
+    // ---- theme-adaptive colours (read tokens; update on theme flip) --------
+    let ink = "#2b2b31", accent = "#7a5224";
+    const readColours = () => {
+      const cs = getComputedStyle(document.documentElement);
+      ink = (cs.getPropertyValue("--text-primary") || ink).trim();
+      accent = (cs.getPropertyValue("--accent") || accent).trim();
+    };
+    readColours();
+    new MutationObserver(readColours).observe(document.documentElement, {
+      attributes: true, attributeFilter: ["data-theme"],
+    });
+
+    // ---- tunables ----------------------------------------------------------
+    const PIXEL = 3;        // detector cell size (px) — fine "pixelated" readout
+    const EVENT = 0.95;     // cascade reach as a fraction of min(W,H) — big/grand
+    const LOBE = 0.42;      // EM lobe at axis+LOBE, hadronic at axis−LOBE (same side)
+    const MS_PER_PX = 1.8;  // how fast the cascade front advances (bigger = slower)
+    const DECAY = 0.975;    // per-frame deposit decay (the readout fading)
+    const DEP = 0.4;        // ionization deposited per step
+    const GAP = 650;        // ms of quiet after a cascade finishes before the next
+    const EMIN = 0.05;      // shower energy cutoff (lower = deeper/denser shower)
+    const MAXSEG = 500;     // hard cap on charged segments per event
+    const COSMIC_MS = 2400; // a faint cosmic-ray track crosses about this often
+    const RIGHT_FAVOUR = 0.55; // lean vertices RIGHT (islands sit left); 0 = even, →1 = stronger
+
+    // ---- pixel grid (reallocated on resize) --------------------------------
+    let W = 1, H = 1, dpr = 1, cols = 1, rows = 1;
+    let grid = new Float32Array(1);
+    let needRespawn = false;
+    const resize = () => {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      W = canvas.clientWidth; H = canvas.clientHeight;
+      canvas.width = Math.max(1, Math.round(W * dpr));
+      canvas.height = Math.max(1, Math.round(H * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      cols = Math.ceil(W / PIXEL); rows = Math.ceil(H / PIXEL);
+      grid = new Float32Array(cols * rows);
+      needRespawn = true;
+    };
+    resize();
+    window.addEventListener("resize", resize);
+
+    const depositAt = (x: number, y: number, amt: number) => {
+      const c = Math.floor(x / PIXEL), r = Math.floor(y / PIXEL);
+      if (c < 0 || c >= cols || r < 0 || r >= rows) return;
+      grid[r * cols + c] += amt;
+    };
+    const depositLine = (x0: number, y0: number, x1: number, y1: number, w: number) => {
+      const len = Math.hypot(x1 - x0, y1 - y0);
+      const steps = Math.max(1, Math.ceil(len / (PIXEL * 0.6)));
+      for (let k = 0; k <= steps; k++) depositAt(x0 + (x1 - x0) * k / steps, y0 + (y1 - y0) * k / steps, w);
+    };
+
+    type Seg = { x0: number; y0: number; x1: number; y1: number; tStart: number; tDur: number; weight: number; prog: number };
+    type Cascade = { segs: Seg[]; birth: number; maxEnd: number };
+
+    // ---- build one interaction as a causal cascade of charged segments -----
+    const TYPES = ["numu", "nue", "nc"];   // 2 charged-current + 1 neutral
+    let lastType = "numu";
+    const nextType = (): string => { let t = "numu"; do { t = TYPES[Math.floor(Math.random() * 3)]; } while (t === lastType); return (lastType = t); };
+
+    const buildCascade = (vx: number, vy: number, type: string): Cascade => {
+      const scale = Math.min(W, H) * EVENT;
+      const forward = Math.random() * TAU;            // THIS event's own forward axis
+      const emDir = forward + LOBE, hadDir = forward - LOBE;  // both downstream, splayed
+      const RADLEN = 0.11 * scale, ESTEP = 0.07 * scale, OPEN = 0.13, SCAT = 0.22, BREM = 0.32;
+      const segs: Seg[] = [];
+      let count = 0;
+      const R = (a: number, b: number) => a + Math.random() * (b - a);
+
+      const track = (x: number, y: number, dir: number, t: number, weight: number, len: number) => {
+        const ex = x + Math.cos(dir) * len, ey = y + Math.sin(dir) * len;
+        segs.push({ x0: x, y0: y, x1: ex, y1: ey, tStart: t, tDur: len * MS_PER_PX, weight, prog: 0 });
+        return { ex, ey, tEnd: t + len * MS_PER_PX };
+      };
+      const gamma = (x: number, y: number, dir: number, E: number, t: number) => {
+        if (E < EMIN || count > MAXSEG) return;
+        const L = RADLEN * R(0.7, 1.3);                // neutral: a gap, no deposit, then pair-produce
+        pair(x + Math.cos(dir) * L, y + Math.sin(dir) * L, dir, E, t + L * MS_PER_PX * 0.7);
+      };
+      const pair = (x: number, y: number, dir: number, E: number, t: number) => {
+        if (count > MAXSEG) return;
+        const f = R(0.35, 0.65);
+        electron(x, y, dir + OPEN * R(0.6, 1), E * f, t);
+        electron(x, y, dir - OPEN * R(0.6, 1), E * (1 - f), t);
+      };
+      const electron = (x: number, y: number, dir: number, E: number, t: number) => {
+        if (count > MAXSEG) return;
+        count++;
+        if (E < EMIN) { track(x, y, dir + R(-SCAT, SCAT), t, 0.8, ESTEP * 0.6); return; }
+        const r = track(x, y, dir + R(-SCAT, SCAT), t, 1.0, ESTEP * R(0.7, 1.3));
+        const fb = R(0.3, 0.6);
+        gamma(r.ex, r.ey, dir + R(-BREM, BREM), E * fb, r.tEnd);            // radiated photon
+        electron(r.ex, r.ey, dir + R(-BREM, BREM) * 0.5, E * (1 - fb), r.tEnd); // continues
+      };
+      // a knock-on electron (delta ray) spurring off a charged track — the little
+      // fuzz that makes a real track messy rather than a clean line.
+      const delta = (x: number, y: number, pdir: number, t: number) => {
+        track(x, y, pdir + (Math.random() < 0.5 ? 1 : -1) * R(0.6, 1.4), t, 0.55, ESTEP * R(0.35, 0.9));
+      };
+      const hadron = (dir: number) => {
+        let cx = vx, cy = vy, cd = dir, ct = 0;
+        const steps = 2 + Math.floor(Math.random() * 3);
+        for (let s = 0; s < steps; s++) {
+          cd += R(-0.25, 0.25);
+          const r = track(cx, cy, cd, ct, 1.8, ESTEP * R(1.2, 2.7));
+          if (Math.random() < 0.35) delta(r.ex, r.ey, cd, r.tEnd);   // occasional knock-on
+          cx = r.ex; cy = r.ey; ct = r.tEnd;
+        }
+      };
+
+      if (type === "numu") {
+        const muDir = forward + R(-0.06, 0.06), muLen = scale * 1.35;
+        track(vx, vy, muDir, 0, 0.7, muLen);                              // long muon (MIP), forward spine
+        for (let i = 0; i < 2 + Math.floor(Math.random() * 3); i++) {     // delta rays knocked out along it
+          const f = R(0.15, 0.95);
+          delta(vx + Math.cos(muDir) * muLen * f, vy + Math.sin(muDir) * muLen * f, muDir, muLen * f * MS_PER_PX);
+        }
+        for (let i = 0; i < 2 + Math.floor(Math.random() * 2); i++) hadron(hadDir + R(-0.4, 0.4));
+        gamma(vx, vy, emDir, 1.0, 0); gamma(vx, vy, emDir + 0.18, 0.8, 0); // a π⁰ → 2γ
+      } else if (type === "nue") {
+        electron(vx, vy, emDir + R(-0.08, 0.08), 1.0, 0);                  // electron EM shower (signature)
+        for (let i = 0; i < 2 + Math.floor(Math.random() * 2); i++) hadron(hadDir + R(-0.4, 0.4));
+      } else {
+        for (let i = 0; i < 3 + Math.floor(Math.random() * 2); i++) hadron(hadDir + R(-0.5, 0.5));
+        gamma(vx, vy, emDir, 1.0, 0); gamma(vx, vy, emDir + 0.18, 0.9, 0); // π⁰ → 2γ, no lepton
+      }
+
+      // a touch of nuclear breakup at the vertex — a couple of short stray prongs
+      for (let i = 0; i < 1 + Math.floor(Math.random() * 2); i++)
+        track(vx, vy, forward + R(-1.3, 1.3), 0, 1.1, ESTEP * R(0.3, 0.8));
+
+      let maxEnd = 0;
+      for (const s of segs) maxEnd = Math.max(maxEnd, s.tStart + s.tDur);
+      return { segs, birth: performance.now(), maxEnd };
+    };
+
+    // vertices scatter across the screen but FAVOUR the right (islands sit left);
+    // the power-skew leans x toward 1 while still letting some land on the left.
+    const spawn = (type: string): Cascade =>
+      buildCascade(W * (0.1 + Math.pow(Math.random(), 1 - RIGHT_FAVOUR) * 0.8),
+                   H * (0.1 + Math.random() * 0.8), type);
+
+    let cur: Cascade = spawn("numu");   // open on a dramatic charged-current event
+    lastType = "numu";
+    let lastCosmic = -1e9;
+
+    const depositSpan = (s: Seg, p0: number, p1: number) => {
+      const len = Math.hypot(s.x1 - s.x0, s.y1 - s.y0);
+      const steps = Math.max(1, Math.ceil((p1 - p0) * len / (PIXEL * 0.6)));
+      for (let k = 1; k <= steps; k++) {
+        const u = p0 + (p1 - p0) * k / steps;
+        depositAt(s.x0 + (s.x1 - s.x0) * u, s.y0 + (s.y1 - s.y0) * u, s.weight * DEP);
+      }
+    };
+
+    const step = (now: number) => {
+      for (let i = 0; i < grid.length; i++) { grid[i] *= DECAY; if (grid[i] < 0.004) grid[i] = 0; }
+      for (const s of cur.segs) {
+        if (s.prog >= 1) continue;
+        const cp = Math.min(Math.max((now - cur.birth - s.tStart) / s.tDur, 0), 1);
+        if (cp > s.prog) { depositSpan(s, s.prog, cp); s.prog = cp; }
+      }
+      // a faint cosmic-ray track crosses the detector now and then (background)
+      if (now - lastCosmic > COSMIC_MS) {
+        lastCosmic = now;
+        const a = Math.random() * TAU, half = Math.hypot(W, H) * 0.6;
+        const mx = Math.random() * W, my = Math.random() * H;
+        depositLine(mx - Math.cos(a) * half, my - Math.sin(a) * half, mx + Math.cos(a) * half, my + Math.sin(a) * half, 0.16);
+      }
+      if (now - cur.birth > cur.maxEnd + GAP) cur = spawn(nextType());
+    };
+
+    const drawGrid = () => {
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const v = grid[r * cols + c];
+          if (v < 0.02) continue;
+          ctx.globalAlpha = Math.min(1, v) * 0.9;
+          ctx.fillStyle = v > 0.85 ? accent : ink;   // dense cores catch the accent
+          ctx.fillRect(c * PIXEL, r * PIXEL, PIXEL, PIXEL);
+        }
+      }
+      ctx.globalAlpha = 1;
+    };
+
+    // uncorrelated electronic noise — faint specks redrawn fresh each frame
+    const NOISE = Math.round((W * H) / 22000);
+    const drawNoise = () => {
+      ctx.fillStyle = ink;
+      for (let i = 0; i < NOISE; i++) {
+        ctx.globalAlpha = 0.05 + Math.random() * 0.08;
+        ctx.fillRect(Math.floor(Math.random() * cols) * PIXEL, Math.floor(Math.random() * rows) * PIXEL, PIXEL, PIXEL);
+      }
+      ctx.globalAlpha = 1;
+    };
+
+    let last = 0, raf = 0, visible = true;
+    const frame = (now: number) => {
+      raf = requestAnimationFrame(frame);
+      if (!visible) return;
+      if (now - last < 33) return;   // ~30fps
+      last = now;
+      if (needRespawn) { cur = spawn(nextType()); needRespawn = false; }
+      step(now);
+      ctx.clearRect(0, 0, W, H);
+      drawGrid();
+      drawNoise();
+    };
+
+    if (reduce.matches) {
+      for (const s of cur.segs) depositSpan(s, 0, 1);   // static: one fully-formed event
+      ctx.clearRect(0, 0, W, H);
+      drawGrid();
+      drawNoise();
+    } else {
+      raf = requestAnimationFrame(frame);
+      new IntersectionObserver((es) => { visible = es[0].isIntersecting; }).observe(canvas);
+    }
+  }
+</script>

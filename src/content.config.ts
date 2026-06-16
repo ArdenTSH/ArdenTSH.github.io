@@ -28,4 +28,15 @@ const research = defineCollection({
   }),
 });
 
-export const collections = { writing, research };
+// CV (Phase 1.4). ONE Markdown file per section in src/content/cv/ — each becomes
+// its own island on /cv, ordered by `order`; `title` is the island heading and
+// the body is the section's Markdown. See src/content/cv/_README.md to update it.
+const cv = defineCollection({
+  loader: glob({ pattern: "**/[^_]*.md", base: "./src/content/cv" }),
+  schema: z.object({
+    title: z.string(),
+    order: z.number(),
+  }),
+});
+
+export const collections = { writing, research, cv };

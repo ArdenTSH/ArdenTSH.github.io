@@ -1,13 +1,18 @@
 ---
-// CV (Phase 1.4). The CV is rendered NATIVELY — in the site's own type, as one
-// scrolling document — from src/content/cv.md (edit that file to update it).
+// CV (Phase 1.4). Rendered NATIVELY from the per-section Markdown files in
+// src/content/cv/ — each section is its OWN island, ordered by frontmatter
+// `order`. To update from a new CV, edit those files (see src/content/cv/_README.md).
 // The PDF stays at public/cv/Arden_Tsang_CV.pdf as the formatted download.
 import PageShell from "../layouts/PageShell.astro";
 import Island from "../components/Island.astro";
 import { Icon } from "astro-icon/components";
-import { Content as CV } from "../content/cv.md";
+import { getCollection, render } from "astro:content";
 
 const pdfPath = "/cv/Arden_Tsang_CV.pdf";
+const sections = (await getCollection("cv")).sort((a, b) => a.data.order - b.data.order);
+const rendered = await Promise.all(
+  sections.map(async (s) => ({ title: s.data.title, Content: (await render(s)).Content })),
+);
 ---
 
 <PageShell title="CV" active="cv">
@@ -25,9 +30,14 @@ const pdfPath = "/cv/Arden_Tsang_CV.pdf";
     </p>
   </Island>
 
-  <Island variant="quiet">
-    <div class="prose cv-body"><CV /></div>
-  </Island>
+  {
+    rendered.map(({ title, Content }) => (
+      <Island as="section" class="cv-section">
+        <h2>{title}</h2>
+        <div class="prose cv-body"><Content /></div>
+      </Island>
+    ))
+  }
 </PageShell>
 
 <style>
@@ -46,23 +56,20 @@ const pdfPath = "/cv/Arden_Tsang_CV.pdf";
     height: 16px;
   }
 
-  /* The CV reads as a document. Styles target the rendered Markdown, so they
-     use :global() (Astro scoping doesn't reach <Content/>'s output). */
-  .cv-body :global(h2) {
-    font-size: var(--text-md);
+  /* Each CV section is its own island; its h2 is the section title. */
+  .cv-section h2 {
+    font-size: var(--text-lg);
     font-weight: var(--weight-medium);
-    color: var(--text-secondary);
-    margin-top: var(--space-6);
-    padding-bottom: var(--space-2);
-    border-bottom: var(--hairline) solid var(--border-faint);
   }
-  .cv-body :global(h2:first-child) {
-    margin-top: 0;
-  }
+  /* Section body (rendered Markdown -> styles target it via :global). */
   .cv-body :global(h3) {
     font-size: var(--text-base);
     font-weight: var(--weight-medium);
     margin-top: var(--space-5);
+  }
+  .cv-body :global(h3:first-child),
+  .cv-body :global(ul:first-child) {
+    margin-top: 0;
   }
   /* The "meta" line — the paragraph immediately after an entry title. */
   .cv-body :global(h3 + p) {
