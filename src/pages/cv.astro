@@ -5,6 +5,7 @@
 // The PDF stays at public/cv/Arden_Tsang_CV.pdf as the formatted download.
 import PageShell from "../layouts/PageShell.astro";
 import Island from "../components/Island.astro";
+import ColliderField from "../components/ColliderField.astro";
 import { Icon } from "astro-icon/components";
 import { getCollection, render } from "astro:content";
 
@@ -16,6 +17,7 @@ const rendered = await Promise.all(
 ---
 
 <PageShell title="CV" active="cv">
+  <ColliderField slot="background" />
   <Island as="header">
     <p class="eyebrow">Curriculum vitae</p>
     <h1>CV</h1>

@@ -8,6 +8,7 @@ import Layout from "./Layout.astro";
 import Dock from "../components/Dock.astro";
 import ModeToggle from "../components/ModeToggle.astro";
 import GridToggle from "../components/GridToggle.astro";
+import ColliderControls from "../components/ColliderControls.astro";
 
 interface Props {
   title: string;
@@ -36,6 +37,8 @@ const { title, description, active = "" } = Astro.props;
   <ModeToggle />
   {/* Grid toggle: home only (it controls the black-hole background grid). */}
   {active === "home" && <GridToggle />}
+  {/* Collider controls: CV only (colour toggle + restart for the collision bg). */}
+  {active === "cv" && <ColliderControls />}
 </Layout>
 
 <style>

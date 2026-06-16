@@ -1,0 +1,97 @@
+---
+// ColliderControls — bottom-right controls for the CV page's collision background.
+// "colour" toggles the colourful pT scale (DEFAULT on; persisted in localStorage);
+// the readout shows which of the 15 topologies is on screen; "restart" fades the
+// current collision out and fires a fresh one. Driven by the window hooks that
+// ColliderField exposes (colliderSetColourful / colliderRestart / "collider:pattern").
+---
+
+<div class="collider-controls">
+  <button type="button" class="cc-btn" data-cc-colour aria-pressed="true">colour: on</button>
+  <span class="cc-readout" data-cc-pattern aria-live="polite">—</span>
+  <button type="button" class="cc-btn" data-cc-restart>restart ↻</button>
+</div>
+
+<style>
+  .collider-controls {
+    position: fixed;
+    bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+    right: var(--space-4);
+    z-index: var(--z-dock);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    pointer-events: auto;
+  }
+  .cc-btn,
+  .cc-readout {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-label);
+    color: var(--text-secondary);
+    background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
+    border: var(--hairline) solid var(--border-strong);
+    border-radius: var(--radius-pill);
+    padding: 7px 13px;
+    box-shadow: var(--shadow-dock);
+  }
+  .cc-btn {
+    cursor: pointer;
+    transition:
+      color var(--dur-fast) var(--ease-standard),
+      border-color var(--dur-fast) var(--ease-standard);
+  }
+  .cc-btn:hover {
+    color: var(--text-primary);
+    border-color: var(--accent-line);
+  }
+  .cc-btn[aria-pressed="true"] {
+    color: var(--accent);
+    border-color: var(--accent-line);
+  }
+  .cc-btn:focus-visible {
+    outline: none;
+    box-shadow: var(--ring);
+  }
+  /* the readout: a small non-interactive island showing the current topology */
+  .cc-readout {
+    color: var(--accent);
+    min-width: 9.5rem;
+    text-align: center;
+    white-space: nowrap;
+  }
+</style>
+
+<script>
+  const colourBtn = document.querySelector<HTMLButtonElement>("[data-cc-colour]");
+  const restartBtn = document.querySelector<HTMLButtonElement>("[data-cc-restart]");
+  const patternEl = document.querySelector<HTMLElement>("[data-cc-pattern]");
+
+  // colour is the DEFAULT now: unset → on.
+  const getColour = () => {
+    try { const v = localStorage.getItem("collider-colour"); return v === null ? true : v === "on"; } catch (e) { return true; }
+  };
+  const apply = (on: boolean) => {
+    if (colourBtn) {
+      colourBtn.setAttribute("aria-pressed", String(on));
+      colourBtn.textContent = on ? "colour: on" : "colour: off";
+    }
+    (window as any).colliderSetColourful?.(on);
+  };
+  apply(getColour());
+  colourBtn?.addEventListener("click", () => {
+    const on = !getColour();
+    try { localStorage.setItem("collider-colour", on ? "on" : "off"); } catch (e) {}
+    apply(on);
+  });
+  restartBtn?.addEventListener("click", () => (window as any).colliderRestart?.());
+
+  // the readout follows the current topology
+  if (patternEl) {
+    const initial = (window as any).colliderPattern;
+    if (initial) patternEl.textContent = initial;
+    window.addEventListener("collider:pattern", (e) => {
+      patternEl.textContent = (e as CustomEvent).detail;
+    });
+  }
+</script>
