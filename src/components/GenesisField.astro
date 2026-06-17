@@ -1,0 +1,383 @@
+---
+// GenesisField — ambient background for the cosmology page only. We sit near the
+// centre of a VAST cosmic web and look outward: cluster nodes joined by
+// filaments, galaxies packed around the nodes, strung along the filaments, and
+// scattered through the voids — distributed through a large sphere so the
+// structure recedes outward, gets busier with distance (volume grows as r³), and
+// dissolves into a faint haze at the edge so no boundary is ever visible. It
+// turns gently (and you can drag to rotate / pan around), so depth reads as real
+// parallax — near galaxies sweep fast, distant ones barely move.
+//
+// The "ML accent" the page leans on is in the COLOUR: each galaxy is tinted by
+// its REDSHIFT — its distance out from us. Redshift literally is a shift toward
+// red, so the ramp runs from the cool theme --accent (nearby, low z) to the muted
+// --danger clay-red (distant, high z), biased to stay mostly cool. Distance also
+// dims and shrinks each galaxy. Galaxies are bucketed by redshift shell and drawn
+// far→near in batched fills, so thousands stay cheap.
+//
+// Theme-adaptive (reads the CSS custom properties; redraws on data-theme change);
+// paused offscreen; reduced-motion renders one settled frame with no motion;
+// cleans up its RAF/observers under Astro client navigation.
+---
+
+<canvas class="genesis-field" aria-hidden="true"></canvas>
+
+<style>
+  .genesis-field {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    /* Drag the empty margins to rotate / pan the web (the PageShell lets pointer
+       events fall through the gaps to the background). touch-action: pan-y keeps
+       vertical scrolling intact on touch — only horizontal drags rotate there. */
+    pointer-events: auto;
+    cursor: grab;
+    touch-action: pan-y;
+  }
+  .genesis-field.dragging {
+    cursor: grabbing;
+  }
+</style>
+
+<script>
+  const canvas = document.querySelector<HTMLCanvasElement>("canvas.genesis-field");
+  const ctx = canvas?.getContext("2d");
+  if (canvas && ctx) {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const TAU = Math.PI * 2;
+
+    // ---- theme colours -----------------------------------------------------
+    type RGB = [number, number, number];
+    const parseRGB = (str: string): RGB => {
+      const s = (str || "").trim();
+      if (s[0] === "#") {
+        let h = s.slice(1);
+        if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+        const n = parseInt(h, 16);
+        return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+      }
+      const m = s.match(/-?\d+(?:\.\d+)?/g);
+      if (m && m.length >= 3) return [+m[0], +m[1], +m[2]];
+      return [128, 128, 128];
+    };
+    let cool: RGB = [77, 155, 230];   // --accent      → low redshift
+    let warm: RGB = [212, 117, 107];  // --danger      → high redshift
+    let ink: RGB = [233, 237, 243];   // --text-primary → filaments
+    let light = false;                // true on the paper/light themes
+    const lum = (c: RGB) => (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
+    const readColours = () => {
+      const cs = getComputedStyle(document.documentElement);
+      cool = parseRGB(cs.getPropertyValue("--accent"));
+      warm = parseRGB(cs.getPropertyValue("--danger"));
+      ink = parseRGB(cs.getPropertyValue("--text-primary"));
+      light = lum(parseRGB(cs.getPropertyValue("--bg"))) > 0.5;
+    };
+    readColours();
+    const mix = (a: RGB, b: RGB, t: number): RGB => [
+      a[0] + (b[0] - a[0]) * t,
+      a[1] + (b[1] - a[1]) * t,
+      a[2] + (b[2] - a[2]) * t,
+    ];
+
+    // ---- deterministic RNG (stable web; varies a little per load) -----------
+    let seed = (performance.now() % 100000) + 12345;
+    const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+    const gaussish = () => (rnd() + rnd() + rnd() - 1.5) / 1.5;
+    const randDir = (): RGB => {            // a uniform point on the unit sphere
+      const u = rnd() * 2 - 1, ph = rnd() * TAU, s = Math.sqrt(Math.max(0, 1 - u * u));
+      return [s * Math.cos(ph), u, s * Math.sin(ph)];
+    };
+
+    // ---- build the universe once (world coords, independent of canvas size) -
+    const R_MIN = 0.5, R_MAX = 8;           // structure fills this spherical shell
+    const R3A = R_MIN ** 3, R3B = R_MAX ** 3;
+    const FY = 0.86;                        // gently flatten vertically to suit a wide frame
+    // volume-uniform radius → equal density per unit volume, so the outer shells
+    // (vastly larger) hold most galaxies: the web genuinely gets busier outward.
+    const volRadius = () => Math.cbrt(R3A + (R3B - R3A) * rnd());
+
+    const dense = Math.max(0.5, Math.min(1, (canvas.clientWidth || window.innerWidth) / 1100));
+    const NODES = Math.round(230 * dense);
+    const PER_NODE = Math.round(17 * dense);
+    const PER_FIL = Math.round(20 * dense);   // densely string the filaments → the web reads
+    const FIELD = Math.round(4000 * dense);   // fewer void galaxies → filaments stand out
+
+    // cluster nodes, scattered volume-uniformly through the sphere
+    const nodes: number[][] = [];
+    for (let i = 0; i < NODES; i++) {
+      const d = randDir(), r = volRadius();
+      nodes.push([d[0] * r, d[1] * r * FY, d[2] * r, 0.5 + rnd()]);  // x,y,z,richness
+    }
+    // filaments: join every node to its two nearest neighbours (deduped)
+    const edges: number[][] = [];
+    const seenE = new Set<string>();
+    for (let i = 0; i < NODES; i++) {
+      const d = nodes
+        .map((n, j) => [j, (n[0] - nodes[i][0]) ** 2 + (n[1] - nodes[i][1]) ** 2 + (n[2] - nodes[i][2]) ** 2])
+        .filter(([j]) => j !== i)
+        .sort((a, b) => a[1] - b[1]);
+      for (let k = 0; k < 3 && k < d.length; k++) {
+        const j = d[k][0];
+        const key = i < j ? `${i}-${j}` : `${j}-${i}`;
+        if (!seenE.has(key)) { seenE.add(key); edges.push([i, j]); }
+      }
+    }
+
+    // galaxies → plain arrays first (count not known up front)
+    const ax: number[] = [], ay: number[] = [], az: number[] = [], ab: number[] = [];
+    const push = (x: number, y: number, z: number, b: number) => { ax.push(x); ay.push(y); az.push(z); ab.push(b); };
+    for (const n of nodes) {                          // dense clusters at the nodes
+      const cnt = Math.round(PER_NODE * n[3]);
+      for (let i = 0; i < cnt; i++)
+        push(n[0] + gaussish() * 0.14, n[1] + gaussish() * 0.14, n[2] + gaussish() * 0.14, 0.6 + rnd() * 0.4);
+    }
+    for (const [i, j] of edges) {                     // strands along the filaments
+      const a = nodes[i], b = nodes[j];
+      const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2];
+      for (let k = 0; k < PER_FIL; k++) {
+        const t = rnd();
+        push(a[0] + dx * t + gaussish() * 0.07, a[1] + dy * t + gaussish() * 0.07, a[2] + dz * t + gaussish() * 0.07, 0.5 + rnd() * 0.4);
+      }
+    }
+    for (let i = 0; i < FIELD; i++) {                 // field galaxies through the voids
+      const d = randDir(), r = volRadius();
+      push(d[0] * r, d[1] * r * FY, d[2] * r, 0.3 + rnd() * 0.4);
+    }
+
+    const N = ax.length;
+    const gx = Float32Array.from(ax), gy = Float32Array.from(ay), gz = Float32Array.from(az), gb = Float32Array.from(ab);
+    const px = new Float32Array(N), py = new Float32Array(N), pr = new Float32Array(N);
+    const tr = new Float32Array(N);                   // redshift parameter (radial distance, 0..1)
+    for (let i = 0; i < N; i++) {
+      const r = Math.hypot(gx[i], gy[i] / FY, gz[i]);
+      tr[i] = Math.max(0, Math.min(1, (r - R_MIN) / (R_MAX - R_MIN)));
+    }
+
+    // ---- redshift buckets: NT_R shells × 2 brightness classes ---------------
+    // Colour + alpha are fixed per galaxy (they depend only on its shell), so we
+    // bucket once and, per frame, fill each bucket's discs in a single path. The
+    // far→near bucket order doubles as back-to-front layering.
+    const NT_R = 26, NB = NT_R * 2;
+    const bucketOf = (i: number) =>
+      Math.min(NT_R - 1, Math.floor(tr[i] * NT_R)) * 2 + (gb[i] > 0.62 ? 1 : 0);
+    const buckets: Int32Array[] = [];
+    {
+      const tmp: number[][] = Array.from({ length: NB }, () => []);
+      for (let i = 0; i < N; i++) tmp[bucketOf(i)].push(i);
+      for (let b = 0; b < NB; b++) buckets.push(Int32Array.from(tmp[b]));
+    }
+    // Per-bucket solid fill (colour + alpha for that redshift shell × brightness
+    // class). Galaxies are drawn as bright discs into a low-res buffer; the GLOW
+    // then comes from one blur pass on that buffer when it's upscaled — so it
+    // stays cheap even with thousands of overlapping discs. glowAdd → additive on
+    // the dark sky (clusters bloom); normal compositing on paper (soft stipple).
+    let glowAdd = !light;
+    const bucketStyle: string[] = new Array(NB).fill("rgba(0,0,0,0)");
+    const rebuildShading = () => {                    // recomputed on theme change
+      glowAdd = !light;
+      for (let rb = 0; rb < NT_R; rb++) {
+        const t = rb / (NT_R - 1);
+        const c = mix(cool, warm, Math.pow(t, 1.3));   // bias: mostly cool
+        const edge = t > 0.9 ? Math.max(0, 1 - (t - 0.9) / 0.1) : 1;     // dissolve only the far rim
+        const base = 1.0 - (light ? 0.42 : 0.55) * t;  // nearer = brighter; far stays a haze
+        const dimMul = light ? 0.8 : 0.7;              // paper needs more presence to read
+        for (let bc = 0; bc < 2; bc++) {
+          const a = Math.max(light ? 0.26 : 0.05, base * (bc ? 1.0 : dimMul) * edge);
+          bucketStyle[rb * 2 + bc] = `rgba(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])},${a.toFixed(3)})`;
+        }
+      }
+    };
+    rebuildShading();
+
+    // ---- camera / projection ----------------------------------------------
+    const D = 1.0;                 // camera sits this far out from the centre
+    const NEAR = 0.12;             // near clip — cull anything at/behind the camera
+    const SZMAX = 3.0;
+    const CORE = 1.4;             // disc radius as a multiple of the projected size
+    const GBUF = 0.5;             // galaxies rendered at this fraction of CSS resolution
+    const GHALO = 0.18;           // halo = a buffer at this tiny fraction, bilinear-upscaled (cheap blur)
+    // Orientation: yaw turns about the vertical axis (auto + horizontal drag);
+    // pitch tilts about the horizontal axis (vertical drag), clamped off the poles.
+    let yaw = 0.6, pitch = 0.20;
+    const PITCH_MIN = -1.2, PITCH_MAX = 1.2;
+
+    // offscreen buffers: galaxies render into `glow` (low-res); `halo` is a tiny
+    // downscale of it whose bilinear upscale becomes the soft glow.
+    const glow = document.createElement("canvas");
+    const gctx = glow.getContext("2d")!;
+    const halo = document.createElement("canvas");
+    const hctx = halo.getContext("2d")!;
+    let glowW = 1, glowH = 1, haloW = 1, haloH = 1;
+
+    let W = 1, H = 1, dpr = 1, cx = 0, cy = 0, focal = 1, szMin = 0.45;
+    const resize = () => {
+      dpr = Math.min(window.devicePixelRatio || 1, 1.5);  // soft glows don't need full retina; caps fill-rate
+      W = canvas.clientWidth; H = canvas.clientHeight;
+      canvas.width = Math.max(1, Math.round(W * dpr));
+      canvas.height = Math.max(1, Math.round(H * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      glowW = Math.max(1, Math.round(W * GBUF));
+      glowH = Math.max(1, Math.round(H * GBUF));
+      glow.width = glowW; glow.height = glowH;
+      haloW = Math.max(1, Math.round(W * GHALO));
+      haloH = Math.max(1, Math.round(H * GHALO));
+      halo.width = haloW; halo.height = haloH;
+      cx = W * 0.5; cy = H * 0.5;
+      focal = Math.min(W, H) * 1.05;
+      szMin = light ? 0.65 : 0.5;
+    };
+    resize();
+    window.addEventListener("resize", resize);
+
+    const project = () => {
+      const cyw = Math.cos(yaw), syw = Math.sin(yaw);
+      const cp = Math.cos(pitch), sp = Math.sin(pitch);
+      const mx = -10, MX = W + 10, my = -10, MY = H + 10;
+      for (let i = 0; i < N; i++) {
+        const x = gx[i], y = gy[i], z = gz[i];
+        const x1 = x * cyw + z * syw;            // yaw about Y
+        const z1 = -x * syw + z * cyw;
+        const depth = (y * sp + z1 * cp) + D;    // pitch about X, then push back from camera
+        if (depth <= NEAR) { pr[i] = 0; continue; }   // behind the camera → cull
+        const s = focal / depth;
+        const sx = cx + x1 * s, sy = cy + (y * cp - z1 * sp) * s;
+        if (sx < mx || sx > MX || sy < my || sy > MY) { pr[i] = 0; continue; }
+        px[i] = sx; py[i] = sy;
+        pr[i] = Math.max(szMin, Math.min(SZMAX, 0.006 * s * (0.6 + gb[i])));
+      }
+    };
+
+    const draw = () => {
+      project();
+      ctx.clearRect(0, 0, W, H);
+
+      // filaments first, faint, behind the galaxies
+      const cyw = Math.cos(yaw), syw = Math.sin(yaw);
+      const cp = Math.cos(pitch), sp = Math.sin(pitch);
+      const projN = (n: number[]): number[] | null => {
+        const x1 = n[0] * cyw + n[2] * syw, z1 = -n[0] * syw + n[2] * cyw;
+        const depth = (n[1] * sp + z1 * cp) + D;
+        if (depth <= NEAR) return null;
+        const s = focal / depth;
+        return [cx + x1 * s, cy + (n[1] * cp - z1 * sp) * s, depth];
+      };
+      ctx.lineWidth = 1; ctx.lineCap = "round";
+      const inkRGB = `${Math.round(ink[0])},${Math.round(ink[1])},${Math.round(ink[2])}`;
+      for (const [i, j] of edges) {
+        const a = projN(nodes[i]), b = projN(nodes[j]);
+        if (!a || !b) continue;
+        const r = Math.hypot((nodes[i][0] + nodes[j][0]) / 2, (nodes[i][1] + nodes[j][1]) / 2, (nodes[i][2] + nodes[j][2]) / 2);
+        const t = Math.max(0, Math.min(1, (r - R_MIN) / (R_MAX - R_MIN)));
+        const al = (light ? 0.15 : 0.11) * (1 - t) * (1 - t);
+        if (al < 0.004) continue;
+        ctx.strokeStyle = `rgba(${inkRGB},${al.toFixed(3)})`;
+        ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+      }
+
+      // bright discs into the low-res buffer, batched per bucket (additive on dark)
+      gctx.clearRect(0, 0, glowW, glowH);
+      gctx.globalCompositeOperation = glowAdd ? "lighter" : "source-over";
+      for (let rb = NT_R - 1; rb >= 0; rb--) {
+        for (let bc = 0; bc < 2; bc++) {
+          const idx = buckets[rb * 2 + bc];
+          if (idx.length === 0) continue;
+          gctx.fillStyle = bucketStyle[rb * 2 + bc];
+          gctx.beginPath();
+          for (let k = 0; k < idx.length; k++) {
+            const i = idx[k], r = pr[i];
+            if (r <= 0) continue;
+            const bx = px[i] * GBUF, by = py[i] * GBUF, rr = Math.max(0.6, r * CORE * GBUF);
+            gctx.moveTo(bx + rr, by);
+            gctx.arc(bx, by, rr, 0, TAU);
+          }
+          gctx.fill();
+        }
+      }
+      gctx.globalCompositeOperation = "source-over";
+      // Cheap blur (no ctx.filter — that was far too slow): downscale the buffer
+      // into a tiny canvas, then bilinear-upscale it across the page for a soft
+      // glow halo; then a sharper pass restores the bright cores.
+      hctx.clearRect(0, 0, haloW, haloH);
+      hctx.drawImage(glow, 0, 0, glowW, glowH, 0, 0, haloW, haloH);
+      ctx.drawImage(halo, 0, 0, haloW, haloH, 0, 0, W, H);   // soft halo
+      ctx.drawImage(glow, 0, 0, glowW, glowH, 0, 0, W, H);   // cores
+    };
+
+    // ---- lifecycle + drag-to-rotate ---------------------------------------
+    const animated = !reduce.matches;
+    const SPIN = 0.0012;            // auto-rotation: radians / frame
+    const KX = 0.0055, KY = 0.0045; // drag sensitivity (radians per pixel)
+    const FRICTION = 0.94;          // fling decay after release
+    let last = 0, raf = 0, visible = true;
+    let dragging = false, lastX = 0, lastY = 0, vel = 0, dragPID: number | null = null;
+
+    const onDown = (e: PointerEvent) => {
+      dragging = true; dragPID = e.pointerId; lastX = e.clientX; lastY = e.clientY; vel = 0;
+      try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+      canvas.classList.add("dragging");
+    };
+    const onMove = (e: PointerEvent) => {
+      if (!dragging || e.pointerId !== dragPID) return;
+      const dyaw = (e.clientX - lastX) * KX;
+      yaw += dyaw;
+      vel = dyaw;   // remember the last delta → fling on release
+      pitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, pitch + (e.clientY - lastY) * KY));
+      lastX = e.clientX; lastY = e.clientY;
+      if (!animated) draw();   // reduced-motion: redraw only while actively dragging
+    };
+    const endDrag = (e: PointerEvent) => {
+      if (!dragging || e.pointerId !== dragPID) return;
+      dragging = false; dragPID = null;
+      try { canvas.releasePointerCapture(e.pointerId); } catch (err) {}
+      canvas.classList.remove("dragging");
+      if (!animated) vel = 0;  // no inertia loop under reduced-motion
+    };
+    canvas.addEventListener("pointerdown", onDown);
+    canvas.addEventListener("pointermove", onMove);
+    canvas.addEventListener("pointerup", endDrag);
+    canvas.addEventListener("pointercancel", endDrag);
+
+    const frame = (now: number) => {
+      raf = requestAnimationFrame(frame);
+      if (!visible) return;
+      if (now - last < 33) return;
+      last = now;
+      // auto-spin (plus any decaying fling) resumes whenever the pointer is up
+      if (!dragging) {
+        yaw += SPIN + vel;
+        vel *= FRICTION;
+        if (Math.abs(vel) < 1e-5) vel = 0;
+      }
+      draw();
+    };
+
+    let io: IntersectionObserver | null = null;
+    if (animated) {
+      raf = requestAnimationFrame(frame);
+      io = new IntersectionObserver((es) => { visible = es[0].isIntersecting; });
+      io.observe(canvas);
+    } else {
+      draw();   // one settled frame; a drag redraws on demand, no auto-motion
+    }
+
+    const themeObserver = new MutationObserver(() => { readColours(); rebuildShading(); szMin = light ? 0.6 : 0.45; draw(); });
+    themeObserver.observe(document.documentElement, {
+      attributes: true, attributeFilter: ["data-theme"],
+    });
+
+    const cleanup = () => {
+      cancelAnimationFrame(raf);
+      io?.disconnect();
+      themeObserver.disconnect();
+      window.removeEventListener("resize", resize);
+      canvas.removeEventListener("pointerdown", onDown);
+      canvas.removeEventListener("pointermove", onMove);
+      canvas.removeEventListener("pointerup", endDrag);
+      canvas.removeEventListener("pointercancel", endDrag);
+      document.removeEventListener("astro:before-swap", cleanup);
+    };
+    document.addEventListener("astro:before-swap", cleanup);
+  }
+</script>

@@ -5,7 +5,10 @@
 // what shows here (plain Markdown: paragraphs, ## subheadings, links, lists).
 import PageShell from "../../layouts/PageShell.astro";
 import Island from "../../components/Island.astro";
+import PsoField from "../../components/PsoField.astro";
 import NeutrinoField from "../../components/NeutrinoField.astro";
+import GenesisField from "../../components/GenesisField.astro";
+import SAEField from "../../components/SAEField.astro";
 import { Icon } from "astro-icon/components";
 import { getCollection, render } from "astro:content";
 import { researchAreas } from "../../config/site";
@@ -24,7 +27,13 @@ const Content = rendered?.Content;
 ---
 
 <PageShell title={area.label} active={area.slug}>
+  {/* The computational page runs a live PSO over a drifting landscape behind the islands. */}
+  {area.slug === "materials" && <PsoField slot="background" />}
   {area.slug === "neutrino" && <NeutrinoField slot="background" />}
+  {/* Cosmology: a slowly turning cosmic web, galaxies tinted by redshift. */}
+  {area.slug === "cosmology" && <GenesisField slot="background" />}
+  {/* AI safety: a sparse autoencoder firing monosemantic features over a stream. */}
+  {area.slug === "ai" && <SAEField slot="background" />}
   <Island as="header">
     <a href="/" class="back-link">
       <Icon name="tabler:arrow-left" aria-hidden="true" /> Back to home
