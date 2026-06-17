@@ -1,15 +1,16 @@
 ---
-// NeutrinoField — ambient background for the neutrino page. A liquid-argon
-// detector mostly sees nothing (neutrinos are invisible); once in a while one
-// INTERACTS and a cascade DEVELOPS causally outward from the vertex, deposited
-// as fine pixels the way a LArTPC reads out. Each event picks its OWN forward
-// axis (random per event); within it the EM shower and the hadronic tracks go
-// the SAME way, splayed into adjacent lobes — as really happens. The EM shower
-// is a real cascade: π⁰ → 2γ → e⁺e⁻ → bremsstrahlung γ → e⁺e⁻ → … Three CNN
-// classes cycle (νμ CC long muon, νe CC electron shower, NC no lepton). Faint
-// background noise + cosmic-ray tracks, as real detectors carry. Colours from
-// the theme tokens (pencil in notebook, glow in dark). Paused offscreen; one
-// static event under reduced-motion.
+// NeutrinoField — 3D LArTPC event display (neutrino page). A liquid-argon TPC
+// mostly sees nothing; once in a while a neutrino INTERACTS and a cascade develops
+// causally outward from the vertex as ionization deposited in the argon. Here it
+// lives in a real 3D detector volume you can ORBIT (gentle auto-rotate that yields
+// to drag): a charge-point voxel cloud floats in the drift volume between two
+// faint planes — the CATHODE (back) and the ANODE (front, drawn with the three
+// LArTPC wire directions: collection + two inductions). The ionization DRIFTS onto
+// the anode, where its x–y projection accumulates as the pixelated wire-readout
+// image — the "charge shadow" stuck to that face. Three CNN classes cycle (νμ CC
+// long muon, νe CC electron shower, NC no lepton), plus cosmic-ray tracks and a
+// little readout noise. Theme colours from tokens. Paused offscreen; reduced-motion
+// shows one fully-developed event at a fixed ¾ angle, no motion.
 ---
 
 <canvas class="nu-field" aria-hidden="true"></canvas>
@@ -21,7 +22,10 @@
     width: 100%;
     height: 100%;
     display: block;
+    touch-action: none;
+    cursor: grab;
   }
+  .nu-field:active { cursor: grabbing; }
 </style>
 
 <script>
@@ -32,220 +36,383 @@
     const TAU = Math.PI * 2;
 
     // ---- theme-adaptive colours (read tokens; update on theme flip) --------
-    let ink = "#2b2b31", accent = "#7a5224";
+    let ink = "#2b2b31", accent = "#7a5224", dark = true, faint = 1, shadowK = 0.55, shadowMax = 1;
     const readColours = () => {
       const cs = getComputedStyle(document.documentElement);
       ink = (cs.getPropertyValue("--text-primary") || ink).trim();
       accent = (cs.getPropertyValue("--accent") || accent).trim();
+      // graphite on cream needs more alpha than white on black to read the same;
+      // detect a dark theme from text luminance and boost the faint frame on paper.
+      const m = ink.match(/#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i);
+      dark = m ? (parseInt(m[1], 16) * 0.299 + parseInt(m[2], 16) * 0.587 + parseInt(m[3], 16) * 0.114) / 255 > 0.5 : true;
+      faint = dark ? 1 : 2.0;
+      // the charge shadow does NOT take the paper alpha-boost — graphite on cream
+      // reads strong. Lower BOTH the multiplier and the alpha CEILING on paper, so
+      // even the dense readout core stays a light grey instead of clamping to solid.
+      shadowK = dark ? 0.55 : 0.26;
+      shadowMax = dark ? 1 : 0.4;
     };
     readColours();
     new MutationObserver(readColours).observe(document.documentElement, {
       attributes: true, attributeFilter: ["data-theme"],
     });
 
+    // ---- colour-coding modes (plain / type / topology) ---------------------
+    // every segment carries a physics type id; "type" colours by particle class,
+    // "topology" splits shower vs track, "plain" is the theme-aware intensity look.
+    const MIP = 0, HIP = 1, SHOWER = 2, DELTA = 3, MICHEL = 4;
+    const TYPE_COL = ["#22d3ee", "#3b82f6", "#43c66f", "#eab308", "#f97316"]; // MIP cyan · HIP blue · shower green · delta yellow · Michel orange
+    let colourMode = "plain";
+    try { const v = localStorage.getItem("nu-colour"); if (v === "plain" || v === "type" || v === "topology") colourMode = v; } catch (e) {}
+    const segColour = (m: number, dense: boolean) => {
+      if (colourMode === "type") return TYPE_COL[m] || TYPE_COL[0];
+      if (colourMode === "topology") return m === SHOWER ? "#3b82f6" : "#e5484d";   // shower blue, track red
+      return dense ? accent : ink;                                                   // plain: theme-aware intensity
+    };
+
     // ---- tunables ----------------------------------------------------------
-    const PIXEL = 3;        // detector cell size (px) — fine "pixelated" readout
-    const EVENT = 0.95;     // cascade reach as a fraction of min(W,H) — big/grand
-    const LOBE = 0.42;      // EM lobe at axis+LOBE, hadronic at axis−LOBE (same side)
-    const MS_PER_PX = 1.8;  // how fast the cascade front advances (bigger = slower)
-    const DECAY = 0.975;    // per-frame deposit decay (the readout fading)
-    const DEP = 0.4;        // ionization deposited per step
-    const GAP = 650;        // ms of quiet after a cascade finishes before the next
-    const EMIN = 0.05;      // shower energy cutoff (lower = deeper/denser shower)
-    const MAXSEG = 500;     // hard cap on charged segments per event
-    const COSMIC_MS = 2400; // a faint cosmic-ray track crosses about this often
-    const RIGHT_FAVOUR = 0.55; // lean vertices RIGHT (islands sit left); 0 = even, →1 = stronger
+    // detector half-extents in world units (a rectangular TPC: cathode at z=-LZ,
+    // anode wire planes at z=+LZ; ionization drifts in +z onto the anode).
+    const LX = 1.15, LY = 0.8, LZ = 1.0;
+    const NX = 384, NY = 268, NZ = 334;     // sparse voxel resolution — very fine (only lit cells cost anything)
+    const AX = NX, AY = NY;                 // anode readout matches the volume's transverse (x–y) resolution
+    const VOX_DECAY = 0.972;                // volume ionization fades
+    const SHADOW_DECAY = 0.968;             // the readout image fades fairly quickly
+    const DEP = 0.62, SHADOW_GAIN = 0.45;   // charge per deposit step (anode imprint kept light)
+    const EMIN = 0.05, MAXSEG = 440;        // shower cutoff / segment cap
+    const SCALE = 0.9;                      // cascade reach (world units)
+    const MS_PER_U = 760;                   // cascade front speed (ms per world unit)
+    const GAP = 750;                        // quiet after an event before the next
+    const COSMIC_MS = 2600;                 // a cosmic-ray track crosses about this often
+    const DRIFT_MS = 650;                   // max drift time: charge near the cathode reaches the anode this much later
+    const CAM = 2.0, FOCAL = 1.32;          // close + wide: you're almost inside the volume
+    const AUTO_YAW = 0.0011;                // gentle auto-spin (rad/frame)
 
-    // ---- pixel grid (reallocated on resize) --------------------------------
-    let W = 1, H = 1, dpr = 1, cols = 1, rows = 1;
-    let grid = new Float32Array(1);
-    let needRespawn = false;
-    const resize = () => {
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
-      W = canvas.clientWidth; H = canvas.clientHeight;
-      canvas.width = Math.max(1, Math.round(W * dpr));
-      canvas.height = Math.max(1, Math.round(H * dpr));
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      cols = Math.ceil(W / PIXEL); rows = Math.ceil(H / PIXEL);
-      grid = new Float32Array(cols * rows);
-      needRespawn = true;
-    };
-    resize();
-    window.addEventListener("resize", resize);
+    const DXW = (2 * LX) / NX, DYW = (2 * LY) / NY, DZW = (2 * LZ) / NZ;
+    const R = (a: number, b: number) => a + Math.random() * (b - a);
 
-    const depositAt = (x: number, y: number, amt: number) => {
-      const c = Math.floor(x / PIXEL), r = Math.floor(y / PIXEL);
-      if (c < 0 || c >= cols || r < 0 || r >= rows) return;
-      grid[r * cols + c] += amt;
+    // ---- vector helpers (3D) ----------------------------------------------
+    type V = number[];
+    const add3 = (a: V, b: V): V => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+    const mul3 = (a: V, s: number): V => [a[0] * s, a[1] * s, a[2] * s];
+    const dot3 = (a: V, b: V) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    const cross3 = (a: V, b: V): V => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    const norm3 = (a: V): V => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+    const randUnit = (): V => { const u = Math.random() * 2 - 1, t = Math.random() * TAU, r = Math.sqrt(1 - u * u); return [r * Math.cos(t), r * Math.sin(t), u]; };
+    const basis = (d: V): V[] => { const a: V = Math.abs(d[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0]; const e1 = norm3(cross3(d, a)); return [e1, cross3(d, e1)]; };
+    // perturb d by a small cone of half-angle ~sig (multiple scattering / branching)
+    const perturb = (d: V, sig: number): V => {
+      const [e1, e2] = basis(d), th = sig * (Math.random() * 2 - 1), ph = Math.random() * TAU;
+      const w = add3(mul3(e1, Math.cos(ph)), mul3(e2, Math.sin(ph)));
+      return norm3(add3(mul3(d, Math.cos(th)), mul3(w, Math.sin(th))));
     };
-    const depositLine = (x0: number, y0: number, x1: number, y1: number, w: number) => {
-      const len = Math.hypot(x1 - x0, y1 - y0);
-      const steps = Math.max(1, Math.ceil(len / (PIXEL * 0.6)));
-      for (let k = 0; k <= steps; k++) depositAt(x0 + (x1 - x0) * k / steps, y0 + (y1 - y0) * k / steps, w);
+    // rotate d around axis by ang (Rodrigues) — used for the splayed lobes / pair opening
+    const rotAxis = (d: V, axis: V, ang: number): V => {
+      const c = Math.cos(ang), s = Math.sin(ang), k = norm3(axis), kd = dot3(k, d) * (1 - c), kc = cross3(k, d);
+      return [d[0] * c + kc[0] * s + k[0] * kd, d[1] * c + kc[1] * s + k[1] * kd, d[2] * c + kc[2] * s + k[2] * kd];
     };
 
-    type Seg = { x0: number; y0: number; x1: number; y1: number; tStart: number; tDur: number; weight: number; prog: number };
+    // ---- the two grids -----------------------------------------------------
+    // SPARSE volume: a Map of only the lit voxels (voxelIndex → charge). Per-frame
+    // cost is O(lit cells), not O(NX·NY·NZ), so the grid can be very fine cheaply.
+    const vol = new Map<number, number>();          // drift-volume ionization (sparse)
+    const vtype = new Map<number, number>();        // physics type id per lit voxel (colour modes)
+    const shadow = new Float32Array(AX * AY);       // anode readout image
+    const shadowType = new Int8Array(AX * AY);      // physics type id per anode cell
+    let pending: { idx: number; amt: number; due: number; m: number }[] = [];   // charge still drifting toward the anode
+    let clock = 0;
+    const depositPoint = (x: number, y: number, z: number, amt: number, m = MIP) => {
+      const ix = ((x + LX) / (2 * LX) * NX) | 0, iy = ((y + LY) / (2 * LY) * NY) | 0, iz = ((z + LZ) / (2 * LZ) * NZ) | 0;
+      if (ix >= 0 && ix < NX && iy >= 0 && iy < NY && iz >= 0 && iz < NZ) {
+        const k = ix + NX * (iy + NY * iz); vol.set(k, (vol.get(k) || 0) + amt); vtype.set(k, m);
+      }
+      // the ionization DRIFTS to the anode: its x–y projection lands on the readout
+      // after a delay ∝ distance from the anode plane (charge near the cathode arrives last).
+      const ax = ((x + LX) / (2 * LX) * AX) | 0, ay = ((y + LY) / (2 * LY) * AY) | 0;
+      if (ax >= 0 && ax < AX && ay >= 0 && ay < AY) {
+        const delay = DRIFT_MS * Math.min(1, Math.max(0, (LZ - z) / (2 * LZ)));
+        pending.push({ idx: ax + AX * ay, amt: amt * SHADOW_GAIN, due: clock + delay, m });
+      }
+    };
+
+    // ---- build one interaction as a causal cascade of 3D segments ----------
+    type Seg = { x0: number; y0: number; z0: number; x1: number; y1: number; z1: number; tStart: number; tDur: number; weight: number; prog: number; m: number };
     type Cascade = { segs: Seg[]; birth: number; maxEnd: number };
-
-    // ---- build one interaction as a causal cascade of charged segments -----
-    const TYPES = ["numu", "nue", "nc"];   // 2 charged-current + 1 neutral
+    const TYPES = ["numu", "nue", "nc"];
     let lastType = "numu";
-    const nextType = (): string => { let t = "numu"; do { t = TYPES[Math.floor(Math.random() * 3)]; } while (t === lastType); return (lastType = t); };
+    const nextType = (): string => { let t = "numu"; do { t = TYPES[(Math.random() * 3) | 0]; } while (t === lastType); return (lastType = t); };
 
-    const buildCascade = (vx: number, vy: number, type: string): Cascade => {
-      const scale = Math.min(W, H) * EVENT;
-      const forward = Math.random() * TAU;            // THIS event's own forward axis
-      const emDir = forward + LOBE, hadDir = forward - LOBE;  // both downstream, splayed
-      const RADLEN = 0.11 * scale, ESTEP = 0.07 * scale, OPEN = 0.13, SCAT = 0.22, BREM = 0.32;
+    const buildCascade = (v0: V, type: string): Cascade => {
+      const forward = randUnit();
+      const perp = basis(forward)[0];
+      const emDir = rotAxis(forward, perp, 0.42), hadDir = rotAxis(forward, perp, -0.42);   // splayed lobes, same side
+      const RADLEN = 0.13 * SCALE, ESTEP = 0.09 * SCALE, OPEN = 0.13, SCAT = 0.22, BREM = 0.32;
       const segs: Seg[] = [];
       let count = 0;
-      const R = (a: number, b: number) => a + Math.random() * (b - a);
 
-      const track = (x: number, y: number, dir: number, t: number, weight: number, len: number) => {
-        const ex = x + Math.cos(dir) * len, ey = y + Math.sin(dir) * len;
-        segs.push({ x0: x, y0: y, x1: ex, y1: ey, tStart: t, tDur: len * MS_PER_PX, weight, prog: 0 });
-        return { ex, ey, tEnd: t + len * MS_PER_PX };
+      // speed = β: leptons/pions/photons/the EM shower are ultra-relativistic (β≈1);
+      // the struck-nucleus protons are slow (β≈0.3–0.6) and visibly crawl.
+      const track = (p: V, dir: V, t: number, weight: number, len: number, speed = 1, m = MIP) => {
+        const e = add3(p, mul3(dir, len)), dur = len * MS_PER_U / speed;
+        segs.push({ x0: p[0], y0: p[1], z0: p[2], x1: e[0], y1: e[1], z1: e[2], tStart: t, tDur: dur, weight, prog: 0, m });
+        return { e, tEnd: t + dur };
       };
-      const gamma = (x: number, y: number, dir: number, E: number, t: number) => {
+      const gamma = (p: V, dir: V, E: number, t: number) => {
         if (E < EMIN || count > MAXSEG) return;
-        const L = RADLEN * R(0.7, 1.3);                // neutral: a gap, no deposit, then pair-produce
-        pair(x + Math.cos(dir) * L, y + Math.sin(dir) * L, dir, E, t + L * MS_PER_PX * 0.7);
+        const L = RADLEN * R(0.7, 1.3);                                 // neutral gap, then pair-produce
+        pair(add3(p, mul3(dir, L)), dir, E, t + L * MS_PER_U * 0.7);
       };
-      const pair = (x: number, y: number, dir: number, E: number, t: number) => {
+      const pair = (p: V, dir: V, E: number, t: number) => {
         if (count > MAXSEG) return;
-        const f = R(0.35, 0.65);
-        electron(x, y, dir + OPEN * R(0.6, 1), E * f, t);
-        electron(x, y, dir - OPEN * R(0.6, 1), E * (1 - f), t);
+        const f = R(0.35, 0.65), e1 = basis(dir)[0];
+        electron(p, rotAxis(dir, e1, OPEN * R(0.6, 1)), E * f, t);
+        electron(p, rotAxis(dir, e1, -OPEN * R(0.6, 1)), E * (1 - f), t);
       };
-      const electron = (x: number, y: number, dir: number, E: number, t: number) => {
+      const electron = (p: V, dir: V, E: number, t: number) => {
         if (count > MAXSEG) return;
         count++;
-        if (E < EMIN) { track(x, y, dir + R(-SCAT, SCAT), t, 0.8, ESTEP * 0.6); return; }
-        const r = track(x, y, dir + R(-SCAT, SCAT), t, 1.0, ESTEP * R(0.7, 1.3));
-        const fb = R(0.3, 0.6);
-        gamma(r.ex, r.ey, dir + R(-BREM, BREM), E * fb, r.tEnd);            // radiated photon
-        electron(r.ex, r.ey, dir + R(-BREM, BREM) * 0.5, E * (1 - fb), r.tEnd); // continues
+        if (E < EMIN) { track(p, perturb(dir, SCAT), t, 0.8, ESTEP * 0.6, 1, SHOWER); return; }
+        const r = track(p, perturb(dir, SCAT), t, 1.0, ESTEP * R(0.7, 1.3), 1, SHOWER), fb = R(0.3, 0.6);
+        gamma(r.e, perturb(dir, BREM), E * fb, r.tEnd);                  // radiated photon
+        electron(r.e, perturb(dir, BREM * 0.5), E * (1 - fb), r.tEnd);   // continues
       };
-      // a knock-on electron (delta ray) spurring off a charged track — the little
-      // fuzz that makes a real track messy rather than a clean line.
-      const delta = (x: number, y: number, pdir: number, t: number) => {
-        track(x, y, pdir + (Math.random() < 0.5 ? 1 : -1) * R(0.6, 1.4), t, 0.55, ESTEP * R(0.35, 0.9));
-      };
-      const hadron = (dir: number) => {
-        let cx = vx, cy = vy, cd = dir, ct = 0;
-        const steps = 2 + Math.floor(Math.random() * 3);
+      // a knock-on electron (delta ray) — the fuzz that makes a real track messy
+      const delta = (p: V, pdir: V, t: number) => track(p, perturb(pdir, R(0.6, 1.4)), t, 0.55, ESTEP * R(0.35, 0.9), 1, DELTA);
+      const hadron = (dir: V) => {
+        const proton = Math.random() < 0.7;                             // slow bright proton (HIP), or fast pion (MIP)
+        const beta = proton ? R(0.32, 0.58) : R(0.85, 1.0), wt = proton ? 1.8 : 1.0, hm = proton ? HIP : MIP;
+        let p = v0, cd = dir, ct = 0;
+        const steps = 2 + ((Math.random() * 3) | 0);
         for (let s = 0; s < steps; s++) {
-          cd += R(-0.25, 0.25);
-          const r = track(cx, cy, cd, ct, 1.8, ESTEP * R(1.2, 2.7));
-          if (Math.random() < 0.35) delta(r.ex, r.ey, cd, r.tEnd);   // occasional knock-on
-          cx = r.ex; cy = r.ey; ct = r.tEnd;
+          cd = perturb(cd, 0.22);
+          const r = track(p, cd, ct, wt, ESTEP * R(1.2, 2.7), beta, hm);
+          if (Math.random() < 0.35) delta(r.e, cd, r.tEnd);
+          p = r.e; ct = r.tEnd;
         }
+      };
+      // a Michel electron from muon decay — a short, scattered low-energy e±
+      const michel = (p: V, dir: V, t: number) => {
+        let cp = p, cd = dir, ct = t;
+        for (let i = 0, n = 2 + ((Math.random() * 2) | 0); i < n; i++) { cd = perturb(cd, 0.4); const r = track(cp, cd, ct, 0.9, ESTEP * R(0.5, 0.9), 1, MICHEL); cp = r.e; ct = r.tEnd; }
       };
 
       if (type === "numu") {
-        const muDir = forward + R(-0.06, 0.06), muLen = scale * 1.35;
-        track(vx, vy, muDir, 0, 0.7, muLen);                              // long muon (MIP), forward spine
-        for (let i = 0; i < 2 + Math.floor(Math.random() * 3); i++) {     // delta rays knocked out along it
+        const muDir = perturb(forward, 0.05), muLen = SCALE * 1.4;
+        track(v0, muDir, 0, 0.7, muLen, 1, MIP);                        // long muon (MIP) spine
+        const mf = R(0.5, 0.78);                                        // ...which decays → a Michel electron, after a delay
+        michel(add3(v0, mul3(muDir, muLen * mf)), perturb(muDir, 1.1), muLen * mf * MS_PER_U + R(250, 550));
+        for (let i = 0; i < 2 + ((Math.random() * 3) | 0); i++) {       // delta rays along it
           const f = R(0.15, 0.95);
-          delta(vx + Math.cos(muDir) * muLen * f, vy + Math.sin(muDir) * muLen * f, muDir, muLen * f * MS_PER_PX);
+          delta(add3(v0, mul3(muDir, muLen * f)), muDir, muLen * f * MS_PER_U);
         }
-        for (let i = 0; i < 2 + Math.floor(Math.random() * 2); i++) hadron(hadDir + R(-0.4, 0.4));
-        gamma(vx, vy, emDir, 1.0, 0); gamma(vx, vy, emDir + 0.18, 0.8, 0); // a π⁰ → 2γ
+        for (let i = 0; i < 2 + ((Math.random() * 2) | 0); i++) hadron(perturb(hadDir, 0.35));
+        gamma(v0, emDir, 1.0, 0); gamma(v0, perturb(emDir, 0.18), 0.8, 0);   // a π⁰ → 2γ
       } else if (type === "nue") {
-        electron(vx, vy, emDir + R(-0.08, 0.08), 1.0, 0);                  // electron EM shower (signature)
-        for (let i = 0; i < 2 + Math.floor(Math.random() * 2); i++) hadron(hadDir + R(-0.4, 0.4));
+        electron(v0, perturb(emDir, 0.07), 1.0, 0);                     // electron EM shower (signature)
+        for (let i = 0; i < 2 + ((Math.random() * 2) | 0); i++) hadron(perturb(hadDir, 0.35));
       } else {
-        for (let i = 0; i < 3 + Math.floor(Math.random() * 2); i++) hadron(hadDir + R(-0.5, 0.5));
-        gamma(vx, vy, emDir, 1.0, 0); gamma(vx, vy, emDir + 0.18, 0.9, 0); // π⁰ → 2γ, no lepton
+        for (let i = 0; i < 3 + ((Math.random() * 2) | 0); i++) hadron(perturb(hadDir, 0.45));
+        gamma(v0, emDir, 1.0, 0); gamma(v0, perturb(emDir, 0.18), 0.9, 0);   // π⁰ → 2γ, no lepton
       }
-
-      // a touch of nuclear breakup at the vertex — a couple of short stray prongs
-      for (let i = 0; i < 1 + Math.floor(Math.random() * 2); i++)
-        track(vx, vy, forward + R(-1.3, 1.3), 0, 1.1, ESTEP * R(0.3, 0.8));
+      // nuclear breakup at the vertex — short, slow stray protons
+      for (let i = 0; i < 1 + ((Math.random() * 2) | 0); i++)
+        track(v0, randUnit(), 0, 1.1, ESTEP * R(0.3, 0.8), R(0.3, 0.55), HIP);
 
       let maxEnd = 0;
       for (const s of segs) maxEnd = Math.max(maxEnd, s.tStart + s.tDur);
       return { segs, birth: performance.now(), maxEnd };
     };
 
-    // vertices scatter across the screen but FAVOUR the right (islands sit left);
-    // the power-skew leans x toward 1 while still letting some land on the left.
     const spawn = (type: string): Cascade =>
-      buildCascade(W * (0.1 + Math.pow(Math.random(), 1 - RIGHT_FAVOUR) * 0.8),
-                   H * (0.1 + Math.random() * 0.8), type);
-
-    let cur: Cascade = spawn("numu");   // open on a dramatic charged-current event
+      buildCascade([R(-0.35, 0.35) * LX, R(-0.35, 0.35) * LY, R(-0.4, 0.15) * LZ], type);
+    let cur = spawn("numu");
     lastType = "numu";
     let lastCosmic = -1e9;
 
-    const depositSpan = (s: Seg, p0: number, p1: number) => {
-      const len = Math.hypot(s.x1 - s.x0, s.y1 - s.y0);
-      const steps = Math.max(1, Math.ceil((p1 - p0) * len / (PIXEL * 0.6)));
+    const depositSeg = (s: Seg, p0: number, p1: number) => {
+      const len = Math.hypot(s.x1 - s.x0, s.y1 - s.y0, s.z1 - s.z0);
+      const steps = Math.max(1, Math.ceil((p1 - p0) * len / (DXW * 0.7)));
       for (let k = 1; k <= steps; k++) {
         const u = p0 + (p1 - p0) * k / steps;
-        depositAt(s.x0 + (s.x1 - s.x0) * u, s.y0 + (s.y1 - s.y0) * u, s.weight * DEP);
+        depositPoint(s.x0 + (s.x1 - s.x0) * u, s.y0 + (s.y1 - s.y0) * u, s.z0 + (s.z1 - s.z0) * u, s.weight * DEP, s.m);
       }
     };
 
     const step = (now: number) => {
-      for (let i = 0; i < grid.length; i++) { grid[i] *= DECAY; if (grid[i] < 0.004) grid[i] = 0; }
+      clock = now;
+      for (const [k, q] of vol) { const nq = q * VOX_DECAY; if (nq < 0.01) { vol.delete(k); vtype.delete(k); } else vol.set(k, nq); }
+      for (let i = 0; i < shadow.length; i++) { shadow[i] *= SHADOW_DECAY; if (shadow[i] < 0.008) shadow[i] = 0; }
+      if (pending.length) {                                             // drifted charge that has now reached the anode
+        const keep: typeof pending = [];
+        for (const d of pending) { if (d.due <= now) { shadow[d.idx] += d.amt; shadowType[d.idx] = d.m; } else keep.push(d); }
+        pending = keep;
+      }
       for (const s of cur.segs) {
         if (s.prog >= 1) continue;
         const cp = Math.min(Math.max((now - cur.birth - s.tStart) / s.tDur, 0), 1);
-        if (cp > s.prog) { depositSpan(s, s.prog, cp); s.prog = cp; }
+        if (cp > s.prog) { depositSeg(s, s.prog, cp); s.prog = cp; }
       }
-      // a faint cosmic-ray track crosses the detector now and then (background)
-      if (now - lastCosmic > COSMIC_MS) {
+      if (now - lastCosmic > COSMIC_MS) {                               // a cosmic-ray track crosses the volume
         lastCosmic = now;
-        const a = Math.random() * TAU, half = Math.hypot(W, H) * 0.6;
-        const mx = Math.random() * W, my = Math.random() * H;
-        depositLine(mx - Math.cos(a) * half, my - Math.sin(a) * half, mx + Math.cos(a) * half, my + Math.sin(a) * half, 0.16);
+        const d = randUnit(), c: V = [R(-0.6, 0.6) * LX, R(-0.6, 0.6) * LY, R(-0.6, 0.6) * LZ];
+        const a = add3(c, mul3(d, -1.7)), cn = Math.ceil(3.4 / DXW);     // step ≈ one voxel so the track stays continuous at high res
+        for (let k = 0; k <= cn; k++) { const u = k / cn; depositPoint(a[0] + d[0] * 3.4 * u, a[1] + d[1] * 3.4 * u, a[2] + d[2] * 3.4 * u, 0.16, MIP); }
       }
-      if (now - cur.birth > cur.maxEnd + GAP) cur = spawn(nextType());
+      if (now - cur.birth > cur.maxEnd + GAP) { cur = spawn(nextType()); }
     };
 
-    const drawGrid = () => {
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          const v = grid[r * cols + c];
-          if (v < 0.02) continue;
-          ctx.globalAlpha = Math.min(1, v) * 0.9;
-          ctx.fillStyle = v > 0.85 ? accent : ink;   // dense cores catch the accent
-          ctx.fillRect(c * PIXEL, r * PIXEL, PIXEL, PIXEL);
+    // ---- camera / projection ----------------------------------------------
+    let W = 1, H = 1, dpr = 1, minWH = 1, ox = 0, oy = 0;
+    let yaw = 0.6, pitch = 0.32, cy = 1, sy = 0, cp = 1, sp = 0;
+    const setCam = () => { cy = Math.cos(yaw); sy = Math.sin(yaw); cp = Math.cos(pitch); sp = Math.sin(pitch); };
+    // returns [screenX, screenY, depthZ, scale]
+    const project = (x: number, y: number, z: number) => {
+      const x1 = x * cy + z * sy, z1 = -x * sy + z * cy;
+      const y2 = y * cp - z1 * sp, z2 = y * sp + z1 * cp;
+      const s = (FOCAL * minWH) / (CAM - z2);
+      return [ox + x1 * s, oy - y2 * s, z2, s];
+    };
+    const depthA = (z2: number) => 0.4 + 0.6 * Math.min(1, Math.max(0, (z2 + 1.25) / 2.5));
+
+    const resize = () => {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      W = canvas.clientWidth; H = canvas.clientHeight;
+      canvas.width = Math.max(1, Math.round(W * dpr));
+      canvas.height = Math.max(1, Math.round(H * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      minWH = Math.min(W, H);
+      ox = W * 0.5; oy = H * 0.5;                                        // centred: the volume envelops the page (islands stay opaque on top)
+    };
+    resize();
+    window.addEventListener("resize", resize);
+
+    // ---- the detector frame: two faint planes + 3 anode wire directions ----
+    // built once in detector space (resolution-independent); only the projection
+    // changes per frame. Each entry is a 3D segment [x0,y0,z0, x1,y1,z1].
+    const clipToRect = (c: number, nx: number, ny: number, dx: number, dy: number): number[] | null => {
+      const p0x = c * nx, p0y = c * ny;
+      const slab = (p0: number, d: number, half: number): number[] | null => {
+        if (Math.abs(d) < 1e-9) return p0 >= -half && p0 <= half ? [-1e9, 1e9] : null;
+        let a = (-half - p0) / d, b = (half - p0) / d; return a < b ? [a, b] : [b, a];
+      };
+      const sx = slab(p0x, dx, LX), syb = slab(p0y, dy, LY);
+      if (!sx || !syb) return null;
+      const tmin = Math.max(sx[0], syb[0]), tmax = Math.min(sx[1], syb[1]);
+      if (tmin >= tmax) return null;
+      return [p0x + tmin * dx, p0y + tmin * dy, p0x + tmax * dx, p0y + tmax * dy];
+    };
+    type Wire = { seg: number[]; family: number };
+    const wires: Wire[] = [];
+    const buildWires = () => {
+      // collection (vertical) + two inductions at ±60° from vertical (≈ ±30° from x)
+      const fams = [{ ang: Math.PI / 2, fam: 0 }, { ang: Math.PI / 6, fam: 1 }, { ang: (5 * Math.PI) / 6, fam: 2 }];
+      for (const { ang, fam } of fams) {
+        const dx = Math.cos(ang), dy = Math.sin(ang), nx = -Math.sin(ang), ny = Math.cos(ang);
+        for (let c = -1.25; c <= 1.25; c += 0.13) {
+          const seg = clipToRect(c, nx, ny, dx, dy);
+          if (seg) wires.push({ family: fam, seg: [seg[0], seg[1], LZ, seg[2], seg[3], LZ] });
         }
+      }
+    };
+    buildWires();
+    const rectEdges = (z: number): number[][] => [
+      [-LX, -LY, z, LX, -LY, z], [LX, -LY, z, LX, LY, z], [LX, LY, z, -LX, LY, z], [-LX, LY, z, -LX, -LY, z],
+    ];
+    const connectors: number[][] = [
+      [-LX, -LY, -LZ, -LX, -LY, LZ], [LX, -LY, -LZ, LX, -LY, LZ], [LX, LY, -LZ, LX, LY, LZ], [-LX, LY, -LZ, -LX, LY, LZ],
+    ];
+
+    const line3 = (s: number[], colour: string, alpha: number, w = 1) => {
+      const a = project(s[0], s[1], s[2]), b = project(s[3], s[4], s[5]);
+      ctx.globalAlpha = Math.min(1, alpha * faint); ctx.strokeStyle = colour; ctx.lineWidth = w;
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+    };
+    const drawAnode = () => {
+      for (const e of rectEdges(LZ)) line3(e, accent, 0.5, 1.1);        // anode rectangle
+      for (const wmark of wires) {                                       // the 3 wire directions
+        line3(wmark.seg, accent, wmark.family === 0 ? 0.2 : 0.13, 0.8);
+      }
+      // the charge shadow: the x–y readout image stuck to the anode face
+      for (let ay = 0; ay < AY; ay++) for (let ax = 0; ax < AX; ax++) {
+        const val = shadow[ax + AX * ay];
+        if (val < 0.02) continue;
+        const wx = -LX + (ax + 0.5) * (2 * LX / AX), wy = -LY + (ay + 0.5) * (2 * LY / AY);
+        const pr = project(wx, wy, LZ), sz = Math.max(1.0, pr[3] * (2 * LX / AX));         // ≈ cell pitch → matches the volume voxels
+        ctx.globalAlpha = Math.min(shadowMax, val * shadowK); ctx.fillStyle = segColour(shadowType[ax + AX * ay], val > 0.85);
+        ctx.fillRect(pr[0] - sz / 2, pr[1] - sz / 2, sz, sz);
       }
       ctx.globalAlpha = 1;
     };
+    const drawCathode = () => { for (const e of rectEdges(-LZ)) line3(e, accent, 0.26, 1); };
+    const drawConnectors = () => { for (const e of connectors) line3(e, ink, 0.1, 1); };
 
-    // uncorrelated electronic noise — faint specks redrawn fresh each frame
-    const NOISE = Math.round((W * H) / 22000);
+    const drawVolume = () => {
+      const NXY = NX * NY;
+      for (const [k, val] of vol) {
+        if (val < 0.02) continue;
+        const iz = (k / NXY) | 0, rem = k - iz * NXY, iy = (rem / NX) | 0, ix = rem - iy * NX;
+        const pr = project(-LX + (ix + 0.5) * DXW, -LY + (iy + 0.5) * DYW, -LZ + (iz + 0.5) * DZW);
+        const sz = Math.max(1.0, pr[3] * 0.0062);
+        ctx.globalAlpha = Math.min(1, val * depthA(pr[2]) * 0.9 * faint); ctx.fillStyle = segColour(vtype.get(k) ?? MIP, val > 0.8);
+        ctx.fillRect(pr[0] - sz / 2, pr[1] - sz / 2, sz, sz);
+      }
+      ctx.globalAlpha = 1;
+    };
+    // faint readout noise — fresh specks on the anode each frame
+    const NOISE = Math.round((AX * AY) / 1300);   // keep speck count steady despite the finer anode grid
     const drawNoise = () => {
       ctx.fillStyle = ink;
       for (let i = 0; i < NOISE; i++) {
-        ctx.globalAlpha = 0.05 + Math.random() * 0.08;
-        ctx.fillRect(Math.floor(Math.random() * cols) * PIXEL, Math.floor(Math.random() * rows) * PIXEL, PIXEL, PIXEL);
+        const wx = R(-LX, LX), wy = R(-LY, LY), pr = project(wx, wy, LZ);
+        ctx.globalAlpha = 0.04 + Math.random() * 0.06;
+        ctx.fillRect(pr[0], pr[1], 1.4, 1.4);
       }
       ctx.globalAlpha = 1;
     };
 
+    const draw = () => {
+      setCam();
+      ctx.clearRect(0, 0, W, H);
+      ctx.lineCap = "round";
+      const anodeNear = project(0, 0, LZ)[2] >= project(0, 0, -LZ)[2];  // which plane faces us
+      drawConnectors();
+      if (anodeNear) { drawCathode(); drawVolume(); drawAnode(); }       // far → near (painter's order)
+      else { drawAnode(); drawVolume(); drawCathode(); }
+      drawNoise();
+    };
+
+    // ---- interaction: gentle auto-rotate that yields to drag ----------------
+    let dragging = false, lx = 0, ly = 0;
+    canvas.addEventListener("pointerdown", (e) => { dragging = true; lx = e.clientX; ly = e.clientY; canvas.setPointerCapture(e.pointerId); });
+    canvas.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      yaw += (e.clientX - lx) * 0.006; pitch += (e.clientY - ly) * 0.006;
+      pitch = Math.max(-1.2, Math.min(1.2, pitch)); lx = e.clientX; ly = e.clientY;
+    });
+    const endDrag = () => { dragging = false; };
+    canvas.addEventListener("pointerup", endDrag);
+    canvas.addEventListener("pointercancel", endDrag);
+
+    // colour-coding mode, driven by NeutrinoControls (plain / type / topology)
+    (window as any).nuSetColourMode = (m: string) => { if (m === "plain" || m === "type" || m === "topology") { colourMode = m; draw(); } };
+
+    // ---- lifecycle ---------------------------------------------------------
     let last = 0, raf = 0, visible = true;
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame);
       if (!visible) return;
-      if (now - last < 33) return;   // ~30fps
+      if (now - last < 33) return;                                      // ~30fps
       last = now;
-      if (needRespawn) { cur = spawn(nextType()); needRespawn = false; }
+      if (!dragging) yaw += AUTO_YAW;
       step(now);
-      ctx.clearRect(0, 0, W, H);
-      drawGrid();
-      drawNoise();
+      draw();
     };
 
     if (reduce.matches) {
-      for (const s of cur.segs) depositSpan(s, 0, 1);   // static: one fully-formed event
-      ctx.clearRect(0, 0, W, H);
-      drawGrid();
-      drawNoise();
+      yaw = 0.7; pitch = 0.3;                                           // a settled ¾ view, no motion
+      for (const s of cur.segs) depositSeg(s, 0, 1);
+      for (const d of pending) { shadow[d.idx] += d.amt; shadowType[d.idx] = d.m; } pending = [];   // no drift animation: show the full readout
+      draw();
     } else {
       raf = requestAnimationFrame(frame);
       new IntersectionObserver((es) => { visible = es[0].isIntersecting; }).observe(canvas);

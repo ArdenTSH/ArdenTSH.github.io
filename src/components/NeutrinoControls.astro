@@ -1,0 +1,66 @@
+---
+// NeutrinoControls — colour-coding mode cycle for the 3D LArTPC background
+// (research/neutrino). Cycles plain → type → topology, persisted in localStorage
+// ("nu-colour"), applied via window.nuSetColourMode (defined in NeutrinoField).
+//   • type      — colour by particle: MIP cyan, HIP blue, shower green,
+//                 delta-ray yellow, Michel orange
+//   • topology  — shower blue, track red
+//   • plain     — theme-aware intensity (the default look)
+---
+
+<div class="nu-controls">
+  <button type="button" class="nu-btn" data-nu-mode aria-pressed="false">plain</button>
+</div>
+
+<style>
+  .nu-controls {
+    position: fixed;
+    bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+    right: var(--space-4);
+    z-index: var(--z-dock);
+    display: flex;
+    align-items: center;
+    pointer-events: auto;
+  }
+  .nu-btn {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-label);
+    color: var(--text-secondary);
+    background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
+    border: var(--hairline) solid var(--border-strong);
+    border-radius: var(--radius-pill);
+    padding: 7px 13px;
+    box-shadow: var(--shadow-dock);
+    cursor: pointer;
+    transition:
+      color var(--dur-fast) var(--ease-standard),
+      border-color var(--dur-fast) var(--ease-standard);
+  }
+  .nu-btn:hover { color: var(--text-primary); border-color: var(--accent-line); }
+  .nu-btn[aria-pressed="true"] { color: var(--accent); border-color: var(--accent-line); }
+  .nu-btn:focus-visible { outline: none; box-shadow: var(--ring); }
+</style>
+
+<script>
+  const btn = document.querySelector<HTMLButtonElement>("[data-nu-mode]");
+  const MODES = ["plain", "type", "topology"] as const;
+  type M = typeof MODES[number];
+  const get = (): M => {
+    try { const v = localStorage.getItem("nu-colour"); return (MODES as readonly string[]).includes(v ?? "") ? (v as M) : "plain"; } catch (e) { return "plain"; }
+  };
+  const apply = (m: M) => {
+    if (btn) {
+      btn.setAttribute("aria-pressed", String(m !== "plain"));   // styled "active" when colour-coding is on
+      btn.setAttribute("aria-label", "colour coding: " + m);
+      btn.textContent = m;
+    }
+    (window as any).nuSetColourMode?.(m);
+  };
+  apply(get());
+  btn?.addEventListener("click", () => {
+    const next = MODES[(MODES.indexOf(get()) + 1) % MODES.length];
+    try { localStorage.setItem("nu-colour", next); } catch (e) {}
+    apply(next);
+  });
+</script>
