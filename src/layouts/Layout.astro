@@ -47,6 +47,15 @@ const {
         } catch (e) {}
       })();
     </script>
+    {/* Restore the saved island view (full / side) before paint, same as the theme. */}
+    <script is:inline>
+      (function () {
+        try {
+          var v = localStorage.getItem("islands-view");
+          if (v === "full" || v === "side") document.documentElement.setAttribute("data-islands", v);
+        } catch (e) {}
+      })();
+    </script>
     <title>{title}</title>
   </head>
   <body>
@@ -61,6 +70,12 @@ const {
         <feTurbulence type="fractalNoise" baseFrequency="0.72" numOctaves="2" seed="8" result="g"></feTurbulence>
         <feComponentTransfer in="g" result="ga"><feFuncA type="table" tableValues="1 1 1 0.5 0.85 1 1 0.68 1 1"></feFuncA></feComponentTransfer>
         <feComposite in="d" in2="ga" operator="in"></feComposite>
+      </filter>
+      {/* Deckle: a gentle, irregular paper edge for the notebook island sheets
+          (applied to a border-only layer so the text stays crisp). */}
+      <filter id="paper-edge" x="-4%" y="-4%" width="108%" height="108%" color-interpolation-filters="sRGB">
+        <feTurbulence type="fractalNoise" baseFrequency="0.014 0.02" numOctaves="2" seed="4" result="n"></feTurbulence>
+        <feDisplacementMap in="SourceGraphic" in2="n" scale="1.5" xChannelSelector="R" yChannelSelector="G"></feDisplacementMap>
       </filter>
     </svg>
     <slot />

@@ -12,7 +12,7 @@
   class="mode-toggle"
   aria-label="Switch between the notebook view and the real view"
 >
-  <span class="mode-toggle__label" data-mode-label>see it for real</span>
+  <span class="mode-toggle__label" data-mode-label>The Universe</span>
 </button>
 
 <style>
@@ -60,7 +60,7 @@
   };
   // The label says what a click will switch TO.
   const renderLabel = (mode: string) => {
-    if (label) label.textContent = mode === "real" ? "the notebook" : "see it for real";
+    if (label) label.textContent = mode === "real" ? "The Notebook" : "The Universe";
   };
   renderLabel(getMode());
   btn?.addEventListener("click", () => {

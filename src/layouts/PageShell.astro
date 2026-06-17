@@ -7,8 +7,10 @@
 import Layout from "./Layout.astro";
 import Dock from "../components/Dock.astro";
 import ModeToggle from "../components/ModeToggle.astro";
+import LensGrid from "../components/LensGrid.astro";
 import GridToggle from "../components/GridToggle.astro";
 import ColliderControls from "../components/ColliderControls.astro";
+import NeutrinoControls from "../components/NeutrinoControls.astro";
 
 interface Props {
   title: string;
@@ -24,6 +26,11 @@ const { title, description, active = "" } = Astro.props;
   {/* Full-bleed background slot — pages inject their scene here (Phase 3). */}
   <div class="bg-layer" aria-hidden="true"><slot name="background" /></div>
 
+  {/* Spacetime-lensing cursor grid (micro-motif): a mini-event that plays on the
+      island you point at, behind its text. LensGrid re-parents one canvas into
+      the hovered card, so it's site-wide and lives only on the islands. */}
+  <LensGrid />
+
   <div class="page">
     {/* The island column: each top-level child is an island, all same width. */}
     <main id="main" tabindex="-1" class="column">
@@ -33,12 +40,22 @@ const { title, description, active = "" } = Astro.props;
     <div class="foot"><slot name="foot" /></div>
   </div>
 
+  {/* Shrunk view: the whole page folds to this single tall bar on the far left,
+      showing just the page title. data-island-expand steps it back up a level. */}
+  <button class="page-spine" type="button" data-island-expand aria-label={`Restore ${title}`}>
+    <span class="page-spine-bracket" aria-hidden="true">❯</span>
+    <span class="page-spine-title">{title}</span>
+  </button>
+
   <Dock active={active} />
   <ModeToggle />
-  {/* Grid toggle: home only (it controls the black-hole background grid). */}
-  {active === "home" && <GridToggle />}
+  {/* Grid toggle removed from the UI — the spacetime grid is disabled in
+      BlackHole.astro. Import + component kept so it's a one-line re-enable. */}
+  {/* {active === "home" && <GridToggle />} */}
   {/* Collider controls: CV only (colour toggle + restart for the collision bg). */}
   {active === "cv" && <ColliderControls />}
+  {/* Neutrino colour-coding control: research/neutrino only. */}
+  {active === "neutrino" && <NeutrinoControls />}
 </Layout>
 
 <style>
@@ -124,6 +141,12 @@ const { title, description, active = "" } = Astro.props;
     const REF_HEIGHT = 380;
     let ticking = false;
     const apply = () => {
+      // while the islands are resized (full / collapsed-to-side) the tilt is off —
+      // a near-full reading panel shouldn't swing, and the single bar needn't either.
+      if (document.documentElement.dataset.islands) {
+        for (const el of items) { el.style.transform = ""; el.style.opacity = ""; }
+        return;
+      }
       const vh = window.innerHeight || 1;
       const mid = vh / 2;
       for (const el of items) {
