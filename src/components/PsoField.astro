@@ -1,0 +1,372 @@
+---
+// PsoField — ambient background for the computational/materials page: live
+// particle-swarm optimisation drawn as a notebook contour plot scrolling LEFT.
+// Real PSO: each particle is pulled by its OWN best (cognitive) AND the swarm's
+// best-found point (social / gbest — DISCOVERED, not a scripted target). The
+// landscape genuinely has a deep global minimum (a well carved into the terrain);
+// the swarm explores first, then the social pull ramps in and it converges onto
+// the lowest point it has actually found. Three swarms, ~0.45 screen-widths apart,
+// wells alternating bottom/top. Crosses + velocity arrows. Theme-adaptive; paused
+// offscreen; reduced-motion renders a single settled frame.
+---
+
+<canvas class="pso-field" aria-hidden="true"></canvas>
+
+<style>
+  .pso-field {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+</style>
+
+<script>
+  const canvas = document.querySelector<HTMLCanvasElement>("canvas.pso-field");
+  const ctx = canvas?.getContext("2d");
+  if (canvas && ctx) {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+    let ink = "#2b2b31", accent = "#7a5224", paper = "#efe5cf";
+    const readColours = () => {
+      const cs = getComputedStyle(document.documentElement);
+      ink = (cs.getPropertyValue("--text-primary") || ink).trim();
+      accent = (cs.getPropertyValue("--accent") || accent).trim();
+      paper = (cs.getPropertyValue("--bg") || paper).trim();
+    };
+    readColours();
+    const themeObserver = new MutationObserver(readColours);
+    themeObserver.observe(document.documentElement, {
+      attributes: true, attributeFilter: ["data-theme"],
+    });
+
+    let W = 1, H = 1, dpr = 1;
+    const resize = () => {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      W = canvas.clientWidth; H = canvas.clientHeight;
+      canvas.width = Math.max(1, Math.round(W * dpr));
+      canvas.height = Math.max(1, Math.round(H * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    resize();
+    window.addEventListener("resize", resize);
+
+    let seed = 20260615.5;
+    const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+
+    const SCALE = 62;
+    let scroll = 0;
+    const DRIFT = 0.011;             // constant leftward drift (terrain + particles ride it)
+    const worldW = () => W / SCALE;
+    const worldH = () => H / SCALE;
+
+    const N_SWARMS = 5, PER = 15;    // a few extra swarm slots so one is idle when a well reaches its trigger
+    const SPAWN_AHEAD = 1.025;       // band spawns ~5% off the right edge (sits in [edge, edge+5%])
+    const SPAWN_BAND = 0.05;         // x-spread of the entry band (±2.5%) so it stays inside that 5% strip
+    const EXIT_AT = -0.05;           // a batch recycles (goes idle) when its centroid is ~5% past the left edge
+    const EXPLOIT_AT = 0.6;          // converged by ~60% across the screen
+    const W_MIN = 0.1, W_MAX = 0.9;  // inertia: linearly decreasing across the crossing (high -> low). >1 would need a speed cap to stay stable; <1 is stable on its own
+    const C1 = 0.11;                 // cognitive: pull to the particle's OWN best (self-tether)
+    const C2 = 0.03;                 // social: pull to gbest (core PSO, ON throughout). gentle while searching...
+    const C2_HIGH = 0.06, C2_RAMP_AT = 0.32, C2_RAMP_END = 0.38; // ...then ramps LINEARLY 0.03 -> 0.06 between 32% and 38% across, to gather harder once the well is found
+    const THERMAL = 0.012, TH_DAMP = 0.6; // wobble; damps as the cluster settles (no speed cap — the decreasing w<1 keeps it stable)
+    // entry dash: a gentle leftward boost held at BOOST for the first 3.5% of the crossing, then
+    // easing LINEARLY to BOOST_TAIL by 13%, held at BOOST_TAIL until 37% across (BOOST_TAIL_END),
+    // then easing LINEARLY down to 0 by 50% (BOOST_OFF) — a sustained gentle push, no hard shot. Its
+    // vertical component fans the swarm OUTWARD (top up / bottom down) from 7%->25% across, then pulls
+    // it INWARD (gather toward mid-height) 25%->40%, so it visibly spreads to search then draws back
+    // in. DASH_OUT scales that splay.
+    const BOOST = 0.08, BOOST_TAIL = 0.05, BOOST_TAIL_END = 0.37, BOOST_OFF = 0.50, DASH_HOLD = 0.035, DASH_END = 0.13, DASH_TAIL = 0.40, DASH_OUT = 0.4;
+    const DASH_OUT_AT = 0.07, DASH_IN_AT = 0.25;   // vertical splay: OUTward 7%->25%, then INward 25%->40%
+    // the global minima: a PERIODIC field of basins that ALWAYS exist in the world and scroll in from
+    // the right (never spawned mid-screen). Wells sit at x = k·WELL_SPACING, y alternating by parity,
+    // carved in WARPED space (organic, never circular). A swarm spawns each time a well crosses
+    // WELL_TRIGGER across, then DISCOVERS it via gbest as it journeys in — no seeding, no steering.
+    const WELL_DEPTH_A = 2.5, WELL_SIG_A = 4;        // each well = TWO basins, same centre: a broad one (depth 4, σ 4)...
+    const WELL_DEPTH_B = 1, WELL_SIG_B = 0.5;      // ...plus a narrow one (depth 2, σ 1.5) for a sharper bottom
+    const WELL_SPACING = 9.3, WELL_TRIGGER = 0.55; // wells 9.3 world-units apart; a swarm spawns when a well reaches 55% across
+
+    type Swarm = {
+      wx: Float32Array; wy: Float32Array; vx: Float32Array; vy: Float32Array;
+      pbx: Float32Array; pby: Float32Array; pbo: Float32Array;
+      cx: number; gbx: number; gby: number; gbo: number;   // centre + the swarm's discovered global best
+      active: boolean;                                       // idle swarm slots (awaiting a well trigger) are skipped
+    };
+    const makeSwarm = (): Swarm => ({
+      wx: new Float32Array(PER), wy: new Float32Array(PER),
+      vx: new Float32Array(PER), vy: new Float32Array(PER),
+      pbx: new Float32Array(PER), pby: new Float32Array(PER), pbo: new Float32Array(PER),
+      cx: -1e9, gbx: 0, gby: 0, gbo: 1e9, active: false,
+    });
+    const swarms: Swarm[] = [];
+
+    // domain warp -> organic terrain (and, reused below, warped wells so they
+    // aren't perfect circles).
+    const warpX = (wx: number, wy: number) => wx + 0.8 * Math.sin(wy * 0.7 + 1.3) + 0.4 * Math.cos(wy * 1.9 - 0.5);
+    const warpY = (wx: number, wy: number) => wy + 0.8 * Math.cos(wx * 0.6 - 0.8) + 0.4 * Math.sin(wx * 1.8 + 0.9);
+    const TERRAIN_FLAT = 0.85;        // scales the whole terrain proportionally: flatter relief, identical contour shape (1.0 = original)
+    const terrainAt = (ax: number, ay: number) => {
+      let z = 0;
+      z -= 1.0 * Math.cos(ax * 1.0) * Math.cos(ay * 1.0);
+      z -= 0.55 * Math.cos(ax * 1.7 + 0.6) * Math.cos(ay * 1.5 + 0.4);
+      z -= 0.35 * Math.cos(ax * 0.6 - 0.3) * Math.cos(ay * 0.8 + 1.1);
+      z -= 0.28 * Math.sin(ax * 2.3 + ay * 1.3 + 0.7);
+      z -= 0.2 * Math.cos(ax * 3.1 - 0.2) * Math.cos(ay * 2.6 + 0.9);
+      return z * TERRAIN_FLAT;          // uniform scale -> slightly flatter, contour pattern unchanged
+    };
+    // persistent periodic wells: rebuilt each frame from world position (deterministic), so the global
+    // minima ALWAYS exist and scroll in from the right — never spawned mid-screen.
+    type Well = { x: number; y: number; wax: number; way: number };
+    let wells: Well[] = [];
+    const rebuildWells = () => {
+      wells = [];
+      const wH = worldH(), m = 3 * WELL_SIG_A;   // include wells whose (broad) tails still reach the visible edges
+      const k0 = Math.floor((scroll - m) / WELL_SPACING), k1 = Math.ceil((scroll + worldW() + m) / WELL_SPACING);
+      for (let k = k0; k <= k1; k++) {
+        const x = k * WELL_SPACING, y = (((k % 2) + 2) % 2 === 0 ? 0.27 : 0.73) * wH;
+        wells.push({ x, y, wax: warpX(x, y), way: warpY(x, y) });
+      }
+    };
+    // the LANDSCAPE the particles search and the contours draw: rolling terrain PLUS the periodic wells,
+    // each subtracted in WARPED space (dx/dy from the warped centre) so its level sets come out organic.
+    const landscapeF = (wx: number, wy: number) => {
+      const ax = warpX(wx, wy), ay = warpY(wx, wy);
+      let z = terrainAt(ax, ay);
+      for (const w of wells) {
+        const dx = ax - w.wax, dy = ay - w.way, d2 = dx * dx + dy * dy;
+        z -= WELL_DEPTH_A * Math.exp(-d2 / (2 * WELL_SIG_A * WELL_SIG_A));   // broad basin
+        z -= WELL_DEPTH_B * Math.exp(-d2 / (2 * WELL_SIG_B * WELL_SIG_B));   // + narrow basin (same centre)
+      }
+      return z;
+    };
+    const FMIN = -7, FMAX = 2.4;      // contour level range; FMIN rings most of the deep two-basin wells (bottom ~-7.5)
+
+    const spawnSwarm = (s: Swarm, targetX: number) => {
+      const wH = worldH(), wW = worldW();
+      s.cx = targetX; s.gbo = 1e9; s.active = true;
+      for (let k = 0; k < PER; k++) {
+        s.wx[k] = targetX + (rnd() - 0.5) * SPAWN_BAND * wW; // enter as a loose band ~5% off the right edge
+        s.wy[k] = (0.12 + 0.76 * rnd()) * wH;              // spread across the height
+        s.vx[k] = -(0.05 + 0.03 * rnd());                  // leftward boost (carries them in)
+        s.vy[k] = (rnd() - 0.5) * 0.03;
+        s.pbx[k] = s.wx[k]; s.pby[k] = s.wy[k];
+        s.pbo[k] = landscapeF(s.wx[k], s.wy[k]);
+        if (s.pbo[k] < s.gbo) { s.gbx = s.pbx[k]; s.gby = s.pby[k]; s.gbo = s.pbo[k]; }  // init gbest
+      }
+    };
+    // the wells exist from frame 0 (a scrolling field); swarms stream in as wells reach the trigger.
+    for (let i = 0; i < N_SWARMS; i++) swarms.push(makeSwarm());
+    rebuildWells();
+    let nextWellK = Math.floor((scroll + WELL_TRIGGER * worldW()) / WELL_SPACING); // next well index to trigger a swarm (floor => one spawns at load)
+
+    // chaotic inertia (Feng 2007): a logistic map iterated each frame supplies the chaotic term z.
+    let chaosZ = 0.37;
+    const step = () => {
+      scroll += DRIFT;
+      chaosZ = 4 * chaosZ * (1 - chaosZ);   // logistic map -> sustained stochastic kicks throughout the run
+      rebuildWells();                        // the periodic well field scrolls in with the world
+      // a swarm spawns each time a well crosses WELL_TRIGGER across, so it journeys in to that well
+      while (scroll >= nextWellK * WELL_SPACING - WELL_TRIGGER * worldW()) {
+        const idle = swarms.find((s) => !s.active);
+        if (idle) spawnSwarm(idle, scroll + SPAWN_AHEAD * worldW());
+        nextWellK++;
+      }
+      const wH = worldH();
+      for (const s of swarms) {
+        if (!s.active) continue;
+        // the centre TRACKS the particles (which fly in on their boost, then search the terrain).
+        let sumx = 0; for (let k = 0; k < PER; k++) sumx += s.wx[k];
+        s.cx += (sumx / PER - s.cx) * 0.12;
+        const cScreen = (s.cx - scroll) * SCALE;
+        const progress = Math.min(Math.max((W - cScreen) / W, 0), 1);
+        const exploit = Math.min(progress / EXPLOIT_AT, 1);
+        const w = (W_MAX - W_MIN) * (1 - progress) + W_MIN * chaosZ; // chaotic inertia (Feng 2007): linear envelope + W_MIN·z logistic-map kick
+        const cCog = C1 * (1.0 - 0.4 * exploit); // self-tether, eases as it converges
+        // social pull toward the swarm's DISCOVERED best (gbest): ON the whole time (standard PSO).
+        // Gentle (C2) while exploring, then ramps up to C2_HIGH between 32%->38% across so it gathers
+        // harder into the well once found — no scripted target.
+        const cSoc = progress < C2_RAMP_AT ? C2
+                   : progress < C2_RAMP_END ? C2 + (C2_HIGH - C2) * (progress - C2_RAMP_AT) / (C2_RAMP_END - C2_RAMP_AT)
+                   : C2_HIGH;
+        const thermal = THERMAL * (1 - TH_DAMP * exploit); // wobble damps as the cluster settles
+        // entry dash, by the swarm's progress across the screen: BOOST for the first 3.5%, ease to
+        // BOOST_TAIL by 13%, hold to 37% (BOOST_TAIL_END), then ease LINEARLY down to 0 by 50% (BOOST_OFF).
+        let boost = 0;
+        if (progress < DASH_HOLD) boost = BOOST;
+        else if (progress < DASH_END) boost = BOOST + (BOOST_TAIL - BOOST) * (progress - DASH_HOLD) / (DASH_END - DASH_HOLD);
+        else if (progress < BOOST_TAIL_END) boost = BOOST_TAIL;
+        else if (progress < BOOST_OFF) boost = BOOST_TAIL * (1 - (progress - BOOST_TAIL_END) / (BOOST_OFF - BOOST_TAIL_END));
+        const cy = 0.5 * wH;                             // mid-height: the swarm fans out / gathers in around this
+        // vertical splay direction: +1 outward (fan apart) 7%->25%, −1 inward (gather) 25%->40%, else 0
+        const vdir = (progress >= DASH_OUT_AT && progress < DASH_IN_AT) ? 1
+                   : (progress >= DASH_IN_AT && progress < DASH_TAIL) ? -1 : 0;
+        for (let k = 0; k < PER; k++) {
+          const r1x = rnd(), r1y = rnd(), r2x = rnd(), r2y = rnd();  // independent randoms per dimension
+          const vsplay = vdir * DASH_OUT * boost * (s.wy[k] - cy) / (0.5 * wH);  // outward (+) / inward (−), scaled by the boost
+          s.vx[k] = w * s.vx[k] + cCog * r1x * (s.pbx[k] - s.wx[k]) + cSoc * r2x * (s.gbx - s.wx[k]) - boost + (rnd() - 0.5) * thermal;
+          s.vy[k] = w * s.vy[k] + cCog * r1y * (s.pby[k] - s.wy[k]) + cSoc * r2y * (s.gby - s.wy[k]) + vsplay + (rnd() - 0.5) * thermal;
+          // no speed cap — inertia (w < 1, linearly decreasing) keeps the dynamics stable on its own.
+          s.wx[k] += s.vx[k]; s.wy[k] += s.vy[k];
+          if (s.wy[k] < 0) { s.wy[k] = -s.wy[k]; s.vy[k] = -s.vy[k]; }
+          else if (s.wy[k] > wH) { s.wy[k] = 2 * wH - s.wy[k]; s.vy[k] = -s.vy[k]; }
+          const o = landscapeF(s.wx[k], s.wy[k]);
+          if (o < s.pbo[k]) {                              // update personal best, then global best
+            s.pbx[k] = s.wx[k]; s.pby[k] = s.wy[k]; s.pbo[k] = o;
+            if (o < s.gbo) { s.gbx = s.wx[k]; s.gby = s.wy[k]; s.gbo = o; }
+          }
+        }
+        if (cScreen < EXIT_AT * W) s.active = false;  // ~5% past the left edge -> go idle, await a well trigger
+      }
+    };
+
+    // ---- contour lines via marching squares ---------------------------------
+    const GX = 108, GY = 72, LEVELS = 24;
+    const grid = new Float32Array((GX + 1) * (GY + 1));
+    const lerp = (la: number, lb: number, L: number) => (L - la) / (lb - la || 1e-6);
+    // terrain cache: terrainAt(warp(...)) is rigid in world space (the scene only scrolls
+    // left), so each world-column's (terrain, warped-x, warped-y) is evaluated ONCE and
+    // reused. Per frame we interpolate between columns and add the moving wells (just exp,
+    // no trig) — cutting ~110k trig/frame. Cleared when the cell geometry changes (resize).
+    const colCache = new Map<number, Float32Array>();
+    let cacheW = 0, cacheH = 0;
+    const buildColumn = (c: number, cwW: number, cwH: number) => {
+      const arr = new Float32Array((GY + 1) * 3), wx = c * cwW;
+      for (let j = 0; j <= GY; j++) {
+        const wy = j * cwH, ax = warpX(wx, wy), ay = warpY(wx, wy);
+        arr[j * 3] = terrainAt(ax, ay); arr[j * 3 + 1] = ax; arr[j * 3 + 2] = ay;
+      }
+      colCache.set(c, arr);
+      return arr;
+    };
+    const drawContours = () => {
+      const cwW = worldW() / GX, cwH = worldH() / GY;
+      if (cwW !== cacheW || cwH !== cacheH) { colCache.clear(); cacheW = cwW; cacheH = cwH; }
+      const c0 = Math.floor(scroll / cwW), frac = scroll / cwW - c0, g0 = 1 - frac;
+      if (colCache.size > GX + 40) for (const k of colCache.keys()) if (k < c0 - 2) colCache.delete(k);
+      const col = (c: number) => colCache.get(c) || buildColumn(c, cwW, cwH);
+      for (let i = 0; i <= GX; i++) {
+        const ca = col(c0 + i), cb = col(c0 + i + 1);
+        for (let j = 0; j <= GY; j++) {
+          const ax = ca[j * 3 + 1] * g0 + cb[j * 3 + 1] * frac;
+          const ay = ca[j * 3 + 2] * g0 + cb[j * 3 + 2] * frac;
+          let z = ca[j * 3] * g0 + cb[j * 3] * frac;
+          for (const w of wells) {
+            const dx = ax - w.wax, dy = ay - w.way, d2 = dx * dx + dy * dy;
+            z -= WELL_DEPTH_A * Math.exp(-d2 / (2 * WELL_SIG_A * WELL_SIG_A));   // broad basin
+            z -= WELL_DEPTH_B * Math.exp(-d2 / (2 * WELL_SIG_B * WELL_SIG_B));   // + narrow basin (same centre)
+          }
+          grid[j * (GX + 1) + i] = z;
+        }
+      }
+      const cw = W / GX, ch = H / GY;
+      ctx.lineWidth = 1; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.strokeStyle = ink;
+      for (let l = 1; l <= LEVELS; l++) {
+        const L = FMIN + ((FMAX - FMIN) * l) / (LEVELS + 1);
+        ctx.beginPath();
+        for (let j = 0; j < GY; j++) {
+          for (let i = 0; i < GX; i++) {
+            const tl = grid[j * (GX + 1) + i];
+            const tr = grid[j * (GX + 1) + i + 1];
+            const br = grid[(j + 1) * (GX + 1) + i + 1];
+            const bl = grid[(j + 1) * (GX + 1) + i];
+            let c = 0;
+            if (tl > L) c |= 8; if (tr > L) c |= 4; if (br > L) c |= 2; if (bl > L) c |= 1;
+            if (c === 0 || c === 15) continue;
+            const x0 = i * cw, y0 = j * ch;
+            const pT = [x0 + cw * lerp(tl, tr, L), y0];
+            const pR = [x0 + cw, y0 + ch * lerp(tr, br, L)];
+            const pB = [x0 + cw * lerp(bl, br, L), y0 + ch];
+            const pLft = [x0, y0 + ch * lerp(tl, bl, L)];
+            const seg = (a: number[], b: number[]) => { ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); };
+            switch (c) {
+              case 1: case 14: seg(pLft, pB); break;
+              case 2: case 13: seg(pB, pR); break;
+              case 3: case 12: seg(pLft, pR); break;
+              case 4: case 11: seg(pT, pR); break;
+              case 6: case 9: seg(pT, pB); break;
+              case 7: case 8: seg(pLft, pT); break;
+              case 5: seg(pLft, pT); seg(pB, pR); break;
+              case 10: seg(pT, pR); seg(pLft, pB); break;
+            }
+          }
+        }
+        ctx.globalAlpha = 0.14 + 0.04 * (l / LEVELS);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    };
+
+    const DEBUG_WELLS = false;  // DIAGNOSTIC: green dot at each well centre (well-tuning aid). Flip to true to show; code kept below.
+    const draw = () => {
+      ctx.clearRect(0, 0, W, H);
+      drawContours();
+      for (const s of swarms) {
+        if (!s.active) continue;
+        for (let k = 0; k < PER; k++) {
+          const cx = (s.wx[k] - scroll) * SCALE, cy = s.wy[k] * SCALE;
+          if (cx < -16 || cx > W + 16) continue;
+          let ex = cx + s.vx[k] * SCALE * 5, ey = cy + s.vy[k] * SCALE * 5;
+          let vlen = Math.hypot(ex - cx, ey - cy);
+          if (vlen > 22) { const f = 22 / vlen; ex = cx + (ex - cx) * f; ey = cy + (ey - cy) * f; vlen = 22; }
+          ctx.globalAlpha = 0.6; ctx.strokeStyle = accent; ctx.lineWidth = 1.2; ctx.lineCap = "round";
+          ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey);
+          if (vlen > 5) {
+            const ang = Math.atan2(ey - cy, ex - cx); const ah = 3.8;
+            ctx.moveTo(ex, ey); ctx.lineTo(ex - ah * Math.cos(ang - 0.5), ey - ah * Math.sin(ang - 0.5));
+            ctx.moveTo(ex, ey); ctx.lineTo(ex - ah * Math.cos(ang + 0.5), ey - ah * Math.sin(ang + 0.5));
+          }
+          ctx.stroke();
+          ctx.globalAlpha = 0.92; ctx.fillStyle = paper;
+          ctx.beginPath(); ctx.arc(cx, cy, 4.2, 0, Math.PI * 2); ctx.fill();
+          const r = 3;
+          ctx.globalAlpha = 1; ctx.strokeStyle = ink; ctx.lineWidth = 1.5; ctx.lineCap = "round";
+          ctx.beginPath();
+          ctx.moveTo(cx - r, cy - r); ctx.lineTo(cx + r, cy + r);
+          ctx.moveTo(cx - r, cy + r); ctx.lineTo(cx + r, cy - r);
+          ctx.stroke();
+        }
+      }
+      // ---- DIAGNOSTIC: green dot at each persistent well centre (the global minima). Visual only —
+      // does NOT touch landscapeF or the dynamics. Toggle with DEBUG_WELLS above.
+      if (DEBUG_WELLS) {
+        for (const w of wells) {
+          const mx = (w.x - scroll) * SCALE, my = w.y * SCALE;
+          if (mx < -20 || mx > W + 20) continue;
+          ctx.globalAlpha = 0.95; ctx.fillStyle = "#2ee65c";                  // green dot at each persistent well centre
+          ctx.beginPath(); ctx.arc(mx, my, 5, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+      ctx.globalAlpha = 1;
+    };
+
+    let last = 0, raf = 0, visible = true;
+    const frame = (now: number) => {
+      raf = requestAnimationFrame(frame);
+      if (!visible) return;
+      if (now - last < 33) return;
+      last = now;
+      step();
+      draw();
+    };
+    let io: IntersectionObserver | null = null;
+    if (reduce.matches) {
+      for (let n = 0; n < 400; n++) step();
+      draw();
+    } else {
+      raf = requestAnimationFrame(frame);
+      io = new IntersectionObserver((es) => { visible = es[0].isIntersecting; });
+      io.observe(canvas);
+    }
+    // tidy up under Astro client navigation / view transitions — don't leak a RAF loop
+    // or observers driving a now-detached canvas.
+    const cleanup = () => {
+      cancelAnimationFrame(raf);
+      io?.disconnect();
+      themeObserver.disconnect();
+      window.removeEventListener("resize", resize);
+      document.removeEventListener("astro:before-swap", cleanup);
+    };
+    document.addEventListener("astro:before-swap", cleanup);
+  }
+</script>
