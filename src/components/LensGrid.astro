@@ -1,0 +1,188 @@
+---
+// LensGrid — the spacetime-lensing cursor micro-motif, on the islands. On a card
+// that carries a graph-paper grid (the notebook sheets), one canvas is re-parented
+// in (z-index:-1, behind the text) and redraws THAT SAME grid — identical spacing,
+// colour and alpha — bowing gently toward the cursor as if the pointer carried mass
+// (a quiet GR nod). The displacement is PINNED to the card's frame, so the grid
+// stays welded to the edge and the EDGE ITSELF does not move — only the interior
+// lines bow. The text (DOM) stays crisp on top; the card's fill, edge and shadow
+// are untouched.
+//
+// At rest the warp is zero, so the canvas grid is pixel-identical to the CSS one and
+// the swap in/out is seamless. Stands down entirely while the islands are resized
+// (full / collapsed). Fine-pointer devices only; off under reduced motion; the RAF
+// idles when the pointer is still and hands the grid back to CSS on leave. Cards
+// without a grid (the dark panels) are left untouched.
+---
+
+<script>
+  const fine = window.matchMedia("(hover: hover) and (pointer: fine)");
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+  if (fine.matches && !reduce.matches) {
+    const cv = document.createElement("canvas");
+    cv.className = "island-lens";
+    cv.setAttribute("aria-hidden", "true");
+    const ctx = cv.getContext("2d")!;
+
+    // grid colour + spacing, read from the same tokens the CSS uses (exact match)
+    const parseRGBA = (s: string): [number, number, number, number] => {
+      const m = s.match(/[\d.]+/g);
+      if (m && m.length >= 3) return [+m[0], +m[1], +m[2], m.length >= 4 ? +m[3] : 1];
+      return [60, 60, 70, 0.06];
+    };
+    let col: [number, number, number, number] = [60, 60, 70, 0.06];
+    let GS = 22;
+    const readGrid = () => {
+      const cs = getComputedStyle(document.documentElement);
+      col = parseRGBA(cs.getPropertyValue("--nb-grid").trim());
+      GS = parseFloat(cs.getPropertyValue("--nb-grid-cell")) || 22;
+    };
+    readGrid();
+
+    // the lens stands down while the islands are in a resized view (full / side)
+    const resized = () => !!document.documentElement.dataset.islands;
+
+    let host: HTMLElement | null = null;
+    let W = 0, H = 0, dpr = 1, rad = 8, gridOff = 1;
+    const SIG = 88;    // lens falloff
+    const STR = 0.22;  // peak inward pull — gentle
+    let tx = 0, ty = 0, cx = 0, cy = 0, bend = 0, bendTar = 0, raf = 0, running = false;
+
+    const hasGrid = (el: HTMLElement) => getComputedStyle(el).backgroundImage !== "none";
+
+    const sizeTo = (el: HTMLElement) => {
+      const cs = getComputedStyle(el);
+      const bw = parseFloat(cs.borderTopWidth) || 0;
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      W = el.offsetWidth; H = el.offsetHeight;
+      cv.style.inset = -bw + "px";
+      cv.width = Math.max(1, Math.round(W * dpr));
+      cv.height = Math.max(1, Math.round(H * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      rad = parseFloat(cs.borderTopLeftRadius) || 8;
+      gridOff = bw;
+    };
+
+    const pull = (dx: number, dy: number) => (STR * bend) / (1 + (dx * dx + dy * dy) / (SIG * SIG));
+    // Pin the displacement to the card's frame: it fades to zero at the edges, so the
+    // grid stays attached to the edge and only the interior bows — the edge itself
+    // does not distort.
+    const EDGE_PIN = 26;
+    const edgeTaper = (px: number, py: number) => {
+      const e = Math.min(px, W - px, py, H - py);
+      const t = Math.max(0, Math.min(1, e / EDGE_PIN));
+      return t * t * (3 - 2 * t); // smoothstep, 0 at the edge → 1 inside
+    };
+    const LX = (px: number, py: number) => { const dx = px - cx, dy = py - cy; return px - dx * pull(dx, dy) * edgeTaper(px, py); };
+    const LY = (px: number, py: number) => { const dx = px - cx, dy = py - cy; return py - dy * pull(dx, dy) * edgeTaper(px, py); };
+
+    const roundRect = (x: number, y: number, w: number, h: number, r: number) => {
+      r = Math.min(r, w / 2, h / 2);
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    };
+
+    const draw = () => {
+      ctx.clearRect(0, 0, W, H);
+      if (!host) return;
+      ctx.save();
+      roundRect(0, 0, W, H, rad);
+      ctx.clip();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = `rgba(${col[0]},${col[1]},${col[2]},${col[3]})`;
+      const step = 10;
+      for (let gx = gridOff + 0.5; gx <= W; gx += GS) {
+        ctx.beginPath();
+        let f = true;
+        for (let y = 0; y <= H; y += step) { const lx = LX(gx, y), ly = LY(gx, y); f ? ((ctx.moveTo(lx, ly)), (f = false)) : ctx.lineTo(lx, ly); }
+        ctx.lineTo(LX(gx, H), LY(gx, H));
+        ctx.stroke();
+      }
+      for (let gy = gridOff + 0.5; gy <= H; gy += GS) {
+        ctx.beginPath();
+        let f = true;
+        for (let x = 0; x <= W; x += step) { const lx = LX(x, gy), ly = LY(x, gy); f ? ((ctx.moveTo(lx, ly)), (f = false)) : ctx.lineTo(lx, ly); }
+        ctx.lineTo(LX(W, gy), LY(W, gy));
+        ctx.stroke();
+      }
+      ctx.restore();
+    };
+
+    const detach = () => {
+      if (host) {
+        host.style.backgroundImage = ""; // hand the grid back to CSS
+        if (cv.parentElement === host) host.removeChild(cv);
+      }
+      host = null; bend = 0; bendTar = 0;
+    };
+
+    const loop = () => {
+      cx += (tx - cx) * 0.26;
+      cy += (ty - cy) * 0.26;
+      bend += (bendTar - bend) * 0.22;
+      draw();
+      const settled =
+        Math.abs(tx - cx) < 0.4 && Math.abs(ty - cy) < 0.4 && Math.abs(bendTar - bend) < 0.004;
+      if (settled) {
+        bend = bendTar;
+        if (bendTar === 0) detach();
+        running = false;
+        return;
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    const ensure = () => { if (!running) { running = true; raf = requestAnimationFrame(loop); } };
+
+    const localXY = (clientX: number, clientY: number, el: HTMLElement) => {
+      const r = el.getBoundingClientRect(); // border-box rect = the canvas's (0,0)
+      return [clientX - r.left, clientY - r.top] as const;
+    };
+
+    window.addEventListener(
+      "pointermove",
+      (e) => {
+        if (e.pointerType === "touch") return;
+        if (resized()) { bendTar = 0; ensure(); return; } // stand down in full / side view
+        const t = e.target as Element | null;
+        const isl = (t?.closest?.(".island") as HTMLElement) || null;
+        if (!isl) { bendTar = 0; ensure(); return; }
+        if (isl !== host) {
+          if (!hasGrid(isl)) { bendTar = 0; ensure(); return; } // no grid to warp — leave it
+          if (host) host.style.backgroundImage = "";            // restore the one we're leaving
+          host = isl;
+          host.style.backgroundImage = "none";                  // swap CSS grid → canvas grid
+          host.appendChild(cv);
+          sizeTo(host);
+          const [lx, ly] = localXY(e.clientX, e.clientY, host);
+          cx = lx; cy = ly;
+          draw(); // paint the (straight) grid this frame so there's no gridless flash
+        }
+        const [lx, ly] = localXY(e.clientX, e.clientY, host);
+        tx = lx; ty = ly; bendTar = 1;
+        ensure();
+      },
+      { passive: true }
+    );
+    document.addEventListener("mouseleave", () => { bendTar = 0; ensure(); });
+    window.addEventListener("blur", () => { bendTar = 0; ensure(); });
+    window.addEventListener("resize", () => { if (host) { sizeTo(host); draw(); } });
+
+    // theme flip changes which cards have a grid (and its colour); resizing the
+    // islands (data-islands) means the lens must let go. Either → reset cleanly.
+    const obs = new MutationObserver(() => { readGrid(); detach(); });
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-islands"] });
+
+    const cleanup = () => {
+      cancelAnimationFrame(raf);
+      obs.disconnect();
+      detach();
+      document.removeEventListener("astro:before-swap", cleanup);
+    };
+    document.addEventListener("astro:before-swap", cleanup);
+  }
+</script>

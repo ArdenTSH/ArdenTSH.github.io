@@ -26,9 +26,13 @@
   let mode = "notebook";
   try { mode = localStorage.getItem("bh-mode") || "notebook"; } catch (e) {}
   const style = mode === "real" ? "photoreal" : "sketch";
-  // The lensed graph-paper grid (sketch only) can be toggled off and is persisted.
+  // The lensed graph-paper grid (sketch only) — the "fabric of spacetime" sketch —
+  // is DISABLED site-wide for now: kept in code, just not shown. The read + the
+  // bhSetGrid hook below stay intact, so re-enabling is just deleting the override
+  // here and restoring the GridToggle render in PageShell.astro.
   let gridOn = true;
   try { gridOn = (localStorage.getItem("bh-grid") || "on") !== "off"; } catch (e) {}
+  gridOn = false;   // disabled: never render the spacetime grid
   if (frame && frame.dataset.src && wide.matches && !reduce.matches) {
     frame.src = frame.dataset.src + "?style=" + style + "&grid=" + (gridOn ? "1" : "0");
   }

@@ -21,7 +21,8 @@ import { researchAreas, site } from "../config/site";
   {
     researchAreas.map((a) => (
       <a class="card-link" href={`/research/${a.slug}`}>
-        <Island>
+        {/* controls off: the whole card is a link, a button can't live inside <a> */}
+        <Island controls={false}>
           <div class="card-inner">
             <Icon name={a.icon} class="card-icon" aria-hidden="true" />
             <div class="card-body">

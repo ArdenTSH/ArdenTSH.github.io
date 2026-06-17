@@ -9,12 +9,28 @@
 //   <Island size="compact" | "lg">    padding / scale
 //   <Island accent>                   single lit accent edge
 //   <Island as="section" class="…">   change tag / add classes
+//   <Island controls={false}>         drop the corner trigger (e.g. nav-link cards)
+//
+// View controls: islands carry a quiet two-button stepper in their corner. The
+// action is GLOBAL and works one LEVEL at a time — full ↔ default ↔ side — across
+// EVERY island at once (state is data-islands on <html>, persisted in localStorage
+// and restored before paint by Layout, so it carries across reloads/tabs). Enlarge grows
+// every panel to nearly full width (keeping its natural height); shrink folds the
+// whole page down to a single page-title bar on the far left (rendered by
+// PageShell). At full there's only the shrink button; the page-title bar is the
+// way back up from side.
+//
+// controls={false} drops the corner buttons (a <button> can't live inside the home
+// cards' <a>); those islands still fold away with the rest via the global step.
+import { Icon } from "astro-icon/components";
+
 interface Props {
   variant?: "default" | "solid" | "quiet";
   size?: "default" | "compact" | "lg";
   accent?: boolean;
   as?: keyof HTMLElementTagNameMap;
   class?: string;
+  controls?: boolean;
 }
 const {
   variant = "default",
@@ -22,6 +38,7 @@ const {
   accent = false,
   as: Tag = "article",
   class: className = "",
+  controls = true,
   ...rest
 } = Astro.props;
 
@@ -38,4 +55,64 @@ const classes = [
   .join(" ");
 ---
 
-<Tag class={classes} {...rest}><slot /></Tag>
+<Tag class={classes} {...rest}>
+  {
+    controls && (
+      <div class="island-controls">
+        <button
+          class="island-ctl"
+          type="button"
+          data-island-expand
+          aria-label="Enlarge the panels"
+        >
+          <Icon name="tabler:arrows-diagonal" aria-hidden="true" />
+        </button>
+        <button
+          class="island-ctl"
+          type="button"
+          data-island-shrink
+          aria-label="Shrink the panels"
+        >
+          <Icon name="tabler:arrows-diagonal-minimize-2" aria-hidden="true" />
+        </button>
+      </div>
+    )
+  }
+  <slot />
+</Tag>
+
+<script>
+  // Resizable islands — runs once per page (hoisted + deduped by Astro). One
+  // GLOBAL level on <html> drives every island; each click steps a single level.
+  // The level is persisted in localStorage (like the theme) and restored before
+  // paint by the inline script in Layout, so it carries across reloads and tabs.
+  const LEVELS = ["side", "default", "full"]; // index 0..2, higher = bigger
+  const KEY = "islands-view";
+  const root = document.documentElement;
+  const levelOf = () => {
+    const i = LEVELS.indexOf(root.dataset.islands || "default");
+    return i < 0 ? 1 : i;
+  };
+  const step = (dir: number) => {
+    const next = LEVELS[Math.max(0, Math.min(LEVELS.length - 1, levelOf() + dir))];
+    if (next === "default") {
+      delete root.dataset.islands;
+      try { localStorage.removeItem(KEY); } catch (e) {}
+    } else {
+      root.dataset.islands = next;
+      try { localStorage.setItem(KEY, next); } catch (e) {}
+    }
+    // let the curved-scroll script re-evaluate (it flattens islands while resized)
+    window.dispatchEvent(new Event("scroll"));
+  };
+
+  document.addEventListener("click", (e) => {
+    const t = e.target as Element | null;
+    const expand = t?.closest?.("[data-island-expand]");
+    const shrink = t?.closest?.("[data-island-shrink]");
+    if (!expand && !shrink) return;
+    e.preventDefault(); // never navigate if a trigger sits inside a link
+    e.stopPropagation();
+    step(expand ? 1 : -1);
+  });
+</script>
