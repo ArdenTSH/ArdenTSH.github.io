@@ -1,15 +1,16 @@
 ---
-// ColliderField — abstract collision-reconstruction background (CV page). Each
-// cycle: two beams come in from RANDOM points along the two side walls, meet at
-// the centre, and BOOM — a spray of curved tracks reconstructs outward; it holds
-// for 4 s, fades slowly over 6 s, then a fresh collision starts automatically.
-// One of FIFTEEN real collider topologies per collision (see LABELS). Tracks curve
-// in a magnetic field (low-pT → curls, high-pT → straight); jets are collimated
-// bundles, leptons/photons clean straight tracks, plus MET vectors, calorimeter
-// clusters and displaced vertices. Colourful pT scale by default; restrained
-// ink+accent togglable. window.colliderRestart()/colliderSetColourful(bool) +
-// a "collider:pattern" event drive the controls. Paused offscreen; reduced-motion
-// shows one settled event with no motion.
+// ColliderField — 3D collision event display (CV page). Two beams come in along
+// the BEAM AXIS (z), meet at the centre, and BOOM — a spray of HELICAL tracks
+// reconstructs outward inside a cylindrical detector you can ORBIT (gentle auto-
+// rotate that yields to drag), exactly the neutrino-page 3D tech. Charged tracks
+// helix in the solenoid's axial B field (low-pT → tight spiral loopers, high-pT →
+// straight). One of FIFTEEN real collider topologies per collision (see LABELS),
+// plus jets, leptons/photons, calorimeter clusters, MET vectors and displaced
+// vertices. The cylindrical BARREL wireframe is togglable. THREE colour modes
+// (window.colliderSetMode): "colourful" = full pT rainbow, "quiet" = colour-by-
+// object-type, "muted" = monochrome ink. window.colliderRestart() /
+// colliderSetMode(...) / colliderSetBarrel(bool) + a "collider:pattern" event drive
+// the controls. Paused offscreen; reduced-motion shows one settled event, ¾ view.
 ---
 
 <canvas class="collider-field" aria-hidden="true"></canvas>
@@ -21,7 +22,10 @@
     width: 100%;
     height: 100%;
     display: block;
+    touch-action: none;
+    cursor: grab;
   }
+  .collider-field:active { cursor: grabbing; }
 </style>
 
 <script>
@@ -31,80 +35,86 @@
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
     const TAU = Math.PI * 2, PI = Math.PI;
 
-    let ink = "#2b2b31", accent = "#7a5224", danger = "#a8442f";
+    let ink = "#2b2b31", accent = "#7a5224", danger = "#a8442f", softCol = "hsl(206, 28%, 52%)", faint = 1;
     const readColours = () => {
       const cs = getComputedStyle(document.documentElement);
       ink = (cs.getPropertyValue("--text-primary") || ink).trim();
       accent = (cs.getPropertyValue("--accent") || accent).trim();
       danger = (cs.getPropertyValue("--danger") || danger).trim();
+      const m = ink.match(/#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i);
+      const dark = m ? (parseInt(m[1], 16) * 0.299 + parseInt(m[2], 16) * 0.587 + parseInt(m[3], 16) * 0.114) / 255 > 0.5 : true;
+      softCol = dark ? "hsl(210, 14%, 84%)" : "hsl(206, 28%, 52%)";
+      faint = dark ? 1 : 1.9;                 // the faint barrel needs more alpha on cream
     };
     readColours();
 
     // ---- tunables ----------------------------------------------------------
-    const T_APP = 1100;     // ms: beams travel in (medium speed)
-    const BURST = 950;      // ms: the boom reconstructs outward
-    const HOLD = 4000;      // ms: full event sits, no fading
-    const FADE = 6000;      // ms: then it fades away slowly
-    const QUICK_FADE = 450; // ms: the manual "restart" fade
-    const ALPHA = 0.85;     // track opacity
-    const VFX = 0.54, VFY = 0.47;   // collision point (fraction of W,H) — ~middle
+    const T_APP = 1100, BURST = 950, HOLD = 3500, FADE = 4500, QUICK_FADE = 450;
+    const ALPHA = 0.85, SOFT_ALPHA = 0.45;
+    const BR = 1.0, HZ = 1.5, RCALO = 1.12;   // barrel radius / half-length / calorimeter radius (world units)
+    const DS = 0.04;                          // helix integration step (transverse, world) — coarse enough to stay cheap
+    const CAM = 3.6, FOCAL = 1.72;            // zoomed in: end-on, the barrel circle ≈ fills the screen height
+    const AUTO_YAW = 0.0013;                  // gentle auto-spin (rad/frame)
 
     const HOLD_END = T_APP + BURST + HOLD;
-    const SEQ = HOLD_END + FADE;          // one full cycle
-    const FULL = T_APP + BURST + 100;     // a settled-full snapshot (for static redraws)
+    const SEQ = HOLD_END + FADE;
+    const FULL = T_APP + BURST + 100;
 
     const R = (a: number, b: number) => a + Math.random() * (b - a);
     const sgn = () => (Math.random() < 0.5 ? 1 : -1);
     const gaussish = () => (Math.random() + Math.random() + Math.random() - 1.5) / 1.5;
+    const csz = (v: number) => Math.max(-3, Math.min(3, v));      // clamp the dip (pz/pT)
 
-    let colourful = true;   // colour is the default; only explicit "off" turns it restrained
-    try { const v = localStorage.getItem("collider-colour"); if (v !== null) colourful = v === "on"; } catch (e) {}
+    // three colour modes: colourful (full pT rainbow), quiet (colour-by-type), muted (mono ink)
+    type Mode = "colourful" | "quiet" | "muted";
+    let mode: Mode = "colourful";
+    let showBarrel = true;
+    try { const v = localStorage.getItem("collider-mode"); if (v === "colourful" || v === "quiet" || v === "muted") mode = v; } catch (e) {}
+    try { const v = localStorage.getItem("collider-barrel"); if (v !== null) showBarrel = v === "on"; } catch (e) {}
 
-    type Trk = { pts: number[][]; w: number; pt: number; len: number };
-    let W = 1, H = 1, dpr = 1, vx = 0, vy = 0, maxLen = 1;
+    type Trk = { pts: number[][]; w: number; pt: number; len: number; kind: string; hue?: number };
+    let W = 1, H = 1, dpr = 1, minWH = 1, ox = 0, oy = 0, maxLen = 1;
     let tracks: Trk[] = [];
-    let clusters: number[][] = [];
-    let dvtx: number[] | null = null;
-    let met: number | null = null;
-    let beamSlope = 0;   // slope of the single straight beam-line that passes through the centre
+    let clusters: number[][] = [];     // 3D calorimeter deposits
+    let dvtx: number[] | null = null;  // 3D displaced vertex
+    let met: number | null = null;     // MET azimuth (transverse plane)
 
-    // ---- a single curved track, integrated step by step --------------------
-    const makeTrack = (a0: number, pt: number, s: number, sx = vx, sy = vy): Trk => {
-      const m = Math.min(W, H), ds = m * 0.018;
-      const kappa = (1 - pt) * (1 - pt) * (R(8, 12) / m) * s;
-      const maxSteps = Math.ceil(m * (0.45 + 1.7 * pt) / ds);
-      const pts: number[][] = [[sx, sy]];
-      let x = sx, y = sy, a = a0;
-      for (let k = 0; k < maxSteps; k++) {
-        a += kappa * ds; x += Math.cos(a) * ds; y += Math.sin(a) * ds;
-        pts.push([x, y]);
-        if (x < -0.1 * W || x > 1.1 * W || y < -0.1 * H || y > 1.1 * H) break;
+    // ---- a single charged track: a HELIX in the axial B field --------------
+    // transverse plane (x,y) curves with radius ∝ pT; z advances linearly (the dip).
+    const makeHelix = (phi: number, sz: number, pt: number, s: number, start?: number[]): Trk => {
+      const kappa = (1 - pt) * (1 - pt) * R(5, 7) * s;       // low-pT → tight transverse circle (loopers)
+      const pts: number[][] = [];
+      let x = start ? start[0] : 0, y = start ? start[1] : 0, z = start ? start[2] : 0, a = phi;
+      pts.push([x, y, z]);
+      for (let k = 0; k < 300; k++) {
+        a += kappa * DS; x += Math.cos(a) * DS; y += Math.sin(a) * DS; z += sz * DS;
+        pts.push([x, y, z]);
+        if (Math.hypot(x, y) > BR * 1.3 || Math.abs(z) > HZ * 1.15 || Math.abs(a - phi) > 1.4 * TAU) break;
       }
       let len = 0;
-      for (let k = 1; k < pts.length; k++) len += Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]);
-      return { pts, w: 0.7 + pt * 1.7, pt, len };
+      for (let k = 1; k < pts.length; k++) len += Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1], pts[k][2] - pts[k - 1][2]);
+      return { pts, w: 0.7 + pt * 1.7, pt, len, kind: "had" };
     };
-
-    const add = (a0: number, pt: number, s: number, sx?: number, sy?: number) => {
-      const t = makeTrack(a0, pt, s, sx, sy);
+    const add = (phi: number, sz: number, pt: number, s: number, kind: string = "had", start?: number[]): Trk => {
+      const t = makeHelix(phi, sz, pt, s, start); t.kind = kind;
       if (t.len > maxLen) maxLen = t.len;
-      tracks.push(t);
+      tracks.push(t); return t;
     };
-    const jet = (axis: number, n: number, spread: number) => {
-      for (let i = 0; i < n; i++) add(axis + gaussish() * spread, 0.45 + 0.55 * Math.pow(Math.random(), 0.6), sgn());
+    const jetHue = (j: number, k: number) => (k <= 1 ? 40 : 48 - 16 * (j / (k - 1)));
+    const jet = (phi: number, sz: number, n: number, spread: number, hue: number = 40) => {
+      for (let i = 0; i < n; i++) {
+        const t = add(phi + gaussish() * spread, csz(sz + gaussish() * spread * 0.8), 0.45 + 0.55 * Math.pow(Math.random(), 0.6), sgn(), "jet");
+        t.hue = hue;
+      }
     };
-    const soft = (n: number) => { for (let i = 0; i < n; i++) add(Math.random() * TAU, Math.pow(Math.random(), 3) * 0.4, sgn()); };
-    const photon = (a0: number) => {
-      add(a0, 1.0, 1);
-      const r = Math.min(W, H) * 0.5;
-      clusters.push([vx + Math.cos(a0) * r, vy + Math.sin(a0) * r]);
+    const soft = (n: number) => { for (let i = 0; i < n; i++) add(Math.random() * TAU, csz(gaussish() * 1.6), Math.pow(Math.random(), 3) * 0.4, sgn(), "soft"); };
+    const clusterAt = (phi: number, sz: number) => {
+      const d = 1 / Math.hypot(1, sz);                       // unit dir [cos,sin,sz]/|..|
+      clusters.push([Math.cos(phi) * RCALO * d, Math.sin(phi) * RCALO * d, sz * RCALO * d]);
     };
-    const clusterAt = (axis: number) => {
-      const r = Math.min(W, H) * 0.5;
-      clusters.push([vx + Math.cos(axis) * r, vy + Math.sin(axis) * r]);
-    };
+    const photon = (phi: number, sz: number) => { add(phi, sz, 1.0, 1, "photon"); clusterAt(phi, sz); };
 
-    // ---- the fifteen topologies -------------------------------------------
+    // ---- the fifteen topologies (directions are [azimuth φ, dip sz]) --------
     const LABELS: Record<string, string> = {
       fireball: "fireball", heavyion: "heavy-ion", dijet: "dijet",
       threejet: "3-jet (Mercedes)", multijet: "multijet", fatjet: "boosted fat jet",
@@ -118,170 +128,206 @@
 
     const buildPattern = (type: string) => {
       tracks = []; clusters = []; dvtx = null; met = null; maxLen = 1;
-      const ax = () => Math.random() * TAU;
-      if (type === "fireball") { for (let i = 0; i < 170; i++) add(ax(), Math.pow(Math.random(), 2), sgn()); }
-      else if (type === "heavyion") { for (let i = 0; i < 290; i++) add(ax(), Math.pow(Math.random(), 2.4), sgn()); }
-      else if (type === "dijet") { const a = ax(); jet(a, 46, 0.22); jet(a + PI, 46, 0.22); soft(26); }
-      else if (type === "threejet") { const a = ax(); for (let j = 0; j < 3; j++) jet(a + j * TAU / 3, 34, 0.2); soft(24); }
-      else if (type === "multijet") { const k = 4 + Math.floor(Math.random() * 2); for (let j = 0; j < k; j++) jet(ax(), 26, 0.2); soft(28); }
-      else if (type === "fatjet") { jet(ax(), 92, 0.5); soft(20); }
-      else if (type === "resonance") { const a = ax(); jet(a, 80, 0.42); jet(a + PI, 80, 0.42); clusterAt(a); clusterAt(a + PI); soft(16); }
-      else if (type === "fourlepton") { const b = ax(); for (const a of [b, b + R(1.1, 1.7), b + PI + R(-0.3, 0.3), b + PI + R(1.1, 1.7)]) add(a, R(0.9, 1.0), sgn()); soft(8); }
-      else if (type === "dilepton") { const a = ax(); add(a, R(0.9, 1), 1); add(a + PI + R(-0.15, 0.15), R(0.9, 1), -1); soft(14); }
-      else if (type === "wlnu") { const a = ax(); add(a, R(0.9, 1), sgn()); met = a + PI + R(-0.4, 0.4); soft(16); }
-      else if (type === "leptonjets") { const a = ax(); add(a, R(0.9, 1), sgn()); jet(a + R(1.5, 2.2), 28, 0.22); jet(a - R(1.5, 2.2), 28, 0.22); met = a + R(2.6, 3.7); soft(16); }
-      else if (type === "diphoton") { const a = ax(); photon(a); photon(a + PI + R(-0.12, 0.12)); soft(20); }
-      else if (type === "monojet") { const a = ax(); jet(a, 52, 0.22); met = a + PI + R(-0.2, 0.2); soft(16); }
+      const D = (): number[] => [Math.random() * TAU, csz(gaussish() * 1.2)];   // a random 3D direction
+      if (type === "fireball") { for (let i = 0; i < 145; i++) add(Math.random() * TAU, csz(gaussish() * 1.4), Math.pow(Math.random(), 2), sgn()); }
+      else if (type === "heavyion") { for (let i = 0; i < 200; i++) add(Math.random() * TAU, csz(gaussish() * 1.5), Math.pow(Math.random(), 2.4), sgn()); }
+      else if (type === "dijet") { const [p, z] = D(); jet(p, z, 46, 0.22, jetHue(0, 2)); jet(p + PI, -z, 46, 0.22, jetHue(1, 2)); soft(26); }
+      else if (type === "threejet") { const [p, z] = D(); for (let j = 0; j < 3; j++) jet(p + j * TAU / 3, csz(z + gaussish() * 0.3), 34, 0.2, jetHue(j, 3)); soft(24); }
+      else if (type === "multijet") { const k = 4 + Math.floor(Math.random() * 2); for (let j = 0; j < k; j++) { const [p, z] = D(); jet(p, z, 26, 0.2, jetHue(j, k)); } soft(28); }
+      else if (type === "fatjet") { const [p, z] = D(); jet(p, z, 92, 0.5); soft(20); }
+      else if (type === "resonance") { const [p, z] = D(); jet(p, z, 80, 0.42, jetHue(0, 2)); jet(p + PI, -z, 80, 0.42, jetHue(1, 2)); clusterAt(p, z); clusterAt(p + PI, -z); soft(16); }
+      else if (type === "fourlepton") { const [b, z] = D(); for (const [p, s] of [[b, z], [b + R(1.1, 1.7), z + 0.4], [b + PI + R(-0.3, 0.3), -z], [b + PI + R(1.1, 1.7), -z + 0.4]]) add(p, csz(s), R(0.9, 1.0), sgn(), "lep"); soft(8); }
+      else if (type === "dilepton") { const [p, z] = D(); add(p, z, R(0.9, 1), 1, "lep"); add(p + PI + R(-0.15, 0.15), csz(-z + R(-0.2, 0.2)), R(0.9, 1), -1, "lep"); soft(14); }
+      else if (type === "wlnu") { const [p, z] = D(); add(p, z, R(0.9, 1), sgn(), "lep"); met = p + PI + R(-0.4, 0.4); soft(16); }
+      else if (type === "leptonjets") { const [p, z] = D(); add(p, z, R(0.9, 1), sgn(), "lep"); jet(p + R(1.5, 2.2), csz(z + gaussish() * 0.4), 28, 0.22, jetHue(0, 2)); jet(p - R(1.5, 2.2), csz(z + gaussish() * 0.4), 28, 0.22, jetHue(1, 2)); met = p + R(2.6, 3.7); soft(16); }
+      else if (type === "diphoton") { const [p, z] = D(); photon(p, z); photon(p + PI + R(-0.12, 0.12), -z); soft(20); }
+      else if (type === "monojet") { const [p, z] = D(); jet(p, z, 52, 0.22); met = p + PI + R(-0.2, 0.2); soft(16); }
       else if (type === "displaced") {
-        for (let i = 0; i < 6; i++) add(ax(), Math.pow(Math.random(), 2) * 0.5, sgn());
-        const da = ax(), dr = Math.min(W, H) * R(0.1, 0.2);
-        dvtx = [vx + Math.cos(da) * dr, vy + Math.sin(da) * dr];
-        for (let i = 0; i < 14; i++) add(da + R(-0.9, 0.9), Math.pow(Math.random(), 2), sgn(), dvtx[0], dvtx[1]);
-      } else { for (let i = 0; i < 70; i++) add(ax(), Math.pow(Math.random(), 5) * 0.35, sgn()); }
+        for (let i = 0; i < 6; i++) add(Math.random() * TAU, csz(gaussish()), Math.pow(Math.random(), 2) * 0.5, sgn());
+        const [da, dz] = D(), dr = R(0.18, 0.34), dd = 1 / Math.hypot(1, dz);
+        dvtx = [Math.cos(da) * dr * dd, Math.sin(da) * dr * dd, dz * dr * dd];
+        for (let i = 0; i < 14; i++) add(da + R(-0.9, 0.9), csz(dz + gaussish() * 0.6), Math.pow(Math.random(), 2), sgn(), "had", dvtx);
+      } else { for (let i = 0; i < 70; i++) add(Math.random() * TAU, csz(gaussish() * 1.6), Math.pow(Math.random(), 5) * 0.35, sgn(), "soft"); }
     };
 
-    const trackColour = (pt: number) =>
-      colourful ? `hsl(${Math.round(220 - 210 * pt)}, 72%, 55%)` : (pt > 0.72 ? accent : ink);
+    // ---- colour per mode ---------------------------------------------------
+    const COL = { lep: "#e5484d", em: "#43c66f" };
+    const trackColour = (t: Trk) => {
+      if (mode === "muted") return ink;
+      if (mode === "colourful") return `hsl(${Math.round(220 - 210 * t.pt)}, 72%, 55%)`;
+      if (t.kind === "lep") return COL.lep;
+      if (t.kind === "photon") return COL.em;
+      if (t.kind === "soft") return softCol;
+      if (t.kind === "jet") return `hsl(${(t.hue ?? 40).toFixed(0)}, 78%, 56%)`;
+      return `hsl(${(195 - 157 * t.pt).toFixed(0)}, 60%, 57%)`;
+    };
 
+    // ---- camera / projection (the neutrino-page 3D tech) -------------------
+    let yaw = 1.15, pitch = 0.34, cy = 1, sy = 0, cp = 1, sp = 0;
+    const setCam = () => { cy = Math.cos(yaw); sy = Math.sin(yaw); cp = Math.cos(pitch); sp = Math.sin(pitch); };
+    const project = (x: number, y: number, z: number) => {
+      const x1 = x * cy + z * sy, z1 = -x * sy + z * cy;
+      const y2 = y * cp - z1 * sp, z2 = y * sp + z1 * cp;
+      const s = (FOCAL * minWH) / (CAM - z2);
+      return [ox + x1 * s, oy - y2 * s, z2, s];
+    };
+    const depthA = (z2: number) => 0.45 + 0.55 * Math.min(1, Math.max(0, (z2 + 1.7) / 3.4));
     const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
 
+    const line3 = (s: number[], colour: string, alpha: number, w = 1) => {
+      const a = project(s[0], s[1], s[2]), b = project(s[3], s[4], s[5]);
+      ctx.globalAlpha = Math.min(1, alpha * faint); ctx.strokeStyle = colour; ctx.lineWidth = w;
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+    };
+
+    // ---- the cylindrical barrel (built once, world coords; togglable) ------
+    const barrel: number[][] = [];
+    const ringN = 54;
+    for (const zc of [-HZ, 0, HZ]) for (let i = 0; i < ringN; i++) {
+      const a0 = i / ringN * TAU, a1 = (i + 1) / ringN * TAU;
+      barrel.push([BR * Math.cos(a0), BR * Math.sin(a0), zc, BR * Math.cos(a1), BR * Math.sin(a1), zc, zc === 0 ? 1 : 0]);
+    }
+    const rails: number[][] = [];
+    for (let i = 0; i < 12; i++) { const a = i / 12 * TAU; rails.push([BR * Math.cos(a), BR * Math.sin(a), -HZ, BR * Math.cos(a), BR * Math.sin(a), HZ]); }
+    const drawBarrel = () => {
+      if (!showBarrel) return;
+      for (const s of barrel) line3(s, accent, s[6] ? 0.16 : 0.34, 1);    // mid ring fainter
+      for (const s of rails) line3(s, accent, 0.12, 1);
+      line3([0, 0, -HZ, 0, 0, HZ], ink, 0.1, 1);                          // beam axis
+    };
+
+    // ---- beams along the axis (approach), clusters, MET, vertex flash ------
     const drawBeams = (ap: number, alpha: number) => {
-      const A = [W, vy + beamSlope * (W - vx)], B = [0, vy - beamSlope * vx];   // collinear through the centre
-      ctx.globalAlpha = alpha; ctx.strokeStyle = accent; ctx.lineWidth = 2.2; ctx.lineCap = "round";
-      for (const b of [A, B]) {
-        const fx = b[0] + (vx - b[0]) * ap, fy = b[1] + (vy - b[1]) * ap;
-        ctx.beginPath(); ctx.moveTo(b[0], b[1]); ctx.lineTo(fx, fy); ctx.stroke();
-        ctx.fillStyle = accent; ctx.beginPath(); ctx.arc(fx, fy, 3, 0, TAU); ctx.fill();
+      ctx.lineCap = "round"; ctx.strokeStyle = accent; ctx.lineWidth = 2.2;
+      for (const dir of [-1, 1]) {
+        const a = project(0, 0, dir * HZ), o = project(0, 0, dir * HZ * (1 - ap));
+        ctx.globalAlpha = alpha; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(o[0], o[1]); ctx.stroke();
+        ctx.fillStyle = accent; ctx.beginPath(); ctx.arc(o[0], o[1], 3, 0, TAU); ctx.fill();
       }
       ctx.globalAlpha = 1;
     };
-    const drawCluster = (cx: number, cy: number, k: number, fade: number) => {
-      ctx.fillStyle = colourful ? "hsl(58, 80%, 55%)" : ink;
-      const n = Math.floor(16 * k), rad = 0.05 * Math.min(W, H);
+    const drawCluster = (c: number[], k: number, fade: number) => {
+      const pr = project(c[0], c[1], c[2]);
+      ctx.fillStyle = mode === "muted" ? ink : mode === "colourful" ? "hsl(58, 80%, 55%)" : COL.em;
+      const n = Math.floor(16 * k), rad = pr[3] * 0.05;
       for (let i = 0; i < n; i++) {
         const ang = i * 2.39996, rr = (i / 16) * rad;
         ctx.globalAlpha = (0.2 + 0.3 * Math.random()) * fade;
-        ctx.fillRect(cx + Math.cos(ang) * rr - 2, cy + Math.sin(ang) * rr - 2, 4, 4);
+        ctx.fillRect(pr[0] + Math.cos(ang) * rr - 2, pr[1] + Math.sin(ang) * rr - 2, 4, 4);
       }
       ctx.globalAlpha = 1;
     };
-    const drawMET = (dir: number, reveal: number, fade: number) => {
-      const m = Math.min(W, H), L = m * 0.5 * reveal;
-      const ex = vx + Math.cos(dir) * L, ey = vy + Math.sin(dir) * L;
+    const drawMET = (azi: number, reveal: number, fade: number) => {
+      const L = BR * 0.95 * reveal, o = project(0, 0, 0), e = project(Math.cos(azi) * L, Math.sin(azi) * L, 0);
       ctx.save();
-      ctx.globalAlpha = 0.65 * fade; ctx.strokeStyle = colourful ? danger : ink; ctx.lineWidth = 1.6;
-      ctx.setLineDash([6, 5]); ctx.beginPath(); ctx.moveTo(vx, vy); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.globalAlpha = 0.65 * fade; ctx.strokeStyle = mode === "muted" ? ink : danger; ctx.lineWidth = 1.6;
+      ctx.setLineDash([6, 5]); ctx.beginPath(); ctx.moveTo(o[0], o[1]); ctx.lineTo(e[0], e[1]); ctx.stroke();
       ctx.setLineDash([]);
-      const ah = 11, aa = 0.42;
+      const ang = Math.atan2(e[1] - o[1], e[0] - o[0]), ah = 11, aa = 0.42;
       ctx.beginPath();
-      ctx.moveTo(ex, ey); ctx.lineTo(ex - ah * Math.cos(dir - aa), ey - ah * Math.sin(dir - aa));
-      ctx.moveTo(ex, ey); ctx.lineTo(ex - ah * Math.cos(dir + aa), ey - ah * Math.sin(dir + aa));
-      ctx.stroke();
-      ctx.restore(); ctx.globalAlpha = 1;
+      ctx.moveTo(e[0], e[1]); ctx.lineTo(e[0] - ah * Math.cos(ang - aa), e[1] - ah * Math.sin(ang - aa));
+      ctx.moveTo(e[0], e[1]); ctx.lineTo(e[0] - ah * Math.cos(ang + aa), e[1] - ah * Math.sin(ang + aa));
+      ctx.stroke(); ctx.restore(); ctx.globalAlpha = 1;
     };
 
     const render = (elapsed: number, fade: number) => {
+      setCam();
       ctx.clearRect(0, 0, W, H);
       ctx.lineCap = "round"; ctx.lineJoin = "round";
+      drawBarrel();
       if (elapsed < T_APP) { drawBeams(elapsed / T_APP, fade); return; }
       const bt = elapsed - T_APP;
       const front = easeOut(Math.min(bt / BURST, 1)) * maxLen;
       for (const t of tracks) {
         const upto = Math.max(1, Math.floor((t.pts.length - 1) * Math.min(1, front / t.len)));
         ctx.beginPath();
-        ctx.moveTo(t.pts[0][0], t.pts[0][1]);
-        for (let k = 1; k <= upto; k++) ctx.lineTo(t.pts[k][0], t.pts[k][1]);
-        ctx.strokeStyle = trackColour(t.pt); ctx.lineWidth = t.w; ctx.globalAlpha = ALPHA * fade;
+        let p = project(t.pts[0][0], t.pts[0][1], t.pts[0][2]); ctx.moveTo(p[0], p[1]);
+        let zlast = p[2];
+        for (let k = 1; k <= upto; k++) { const q = project(t.pts[k][0], t.pts[k][1], t.pts[k][2]); ctx.lineTo(q[0], q[1]); zlast = q[2]; }
+        ctx.strokeStyle = trackColour(t); ctx.lineWidth = t.w;
+        ctx.globalAlpha = ((t.kind === "soft" && mode !== "colourful") ? SOFT_ALPHA : ALPHA) * depthA(zlast) * fade;
         ctx.stroke();
       }
       ctx.globalAlpha = 1;
       const rev = Math.min(1, bt / BURST);
-      for (const c of clusters) drawCluster(c[0], c[1], rev, fade);
+      for (const c of clusters) drawCluster(c, rev, fade);
       if (met !== null) drawMET(met, rev, fade);
       if (dvtx) {
-        ctx.globalAlpha = 0.7 * fade; ctx.strokeStyle = colourful ? danger : accent; ctx.lineWidth = 1.4;
-        ctx.beginPath(); ctx.arc(dvtx[0], dvtx[1], 5, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1;
+        const pr = project(dvtx[0], dvtx[1], dvtx[2]);
+        ctx.globalAlpha = 0.7 * fade; ctx.strokeStyle = mode === "muted" ? ink : danger; ctx.lineWidth = 1.4;
+        ctx.beginPath(); ctx.arc(pr[0], pr[1], 5, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1;
       }
       const ba = Math.max(0, 1 - bt / 300) * fade;
       if (ba > 0.01) drawBeams(1, ba);
       const flash = Math.max(0, 1 - bt / (BURST * 0.4));
+      const v = project(0, 0, 0);
       ctx.globalAlpha = (0.4 + 0.6 * flash) * fade; ctx.fillStyle = accent;
-      ctx.beginPath(); ctx.arc(vx, vy, 2 + 14 * flash, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.arc(v[0], v[1], 2 + 14 * flash, 0, TAU); ctx.fill();
       ctx.globalAlpha = 1;
     };
 
     const phaseFade = (c: number) => c < HOLD_END ? 1 : Math.max(0, 1 - (c - HOLD_END) / FADE);
 
-    // ---- lifecycle: auto-loop, paused offscreen ----------------------------
+    // ---- lifecycle ---------------------------------------------------------
     let clock = 0, lastNow = 0, raf = 0, started = false, visible = false;
     let quickFading = false, qf = 0, frozenClock = 0;
-
-    // a random line angle through the centre whose endpoints land ON the two side
-    // walls (x=0 and x=W) and stay on-screen — the two beams are its two halves.
-    const pickSlope = () => {
-      const mg = 0.06 * H;
-      const aL = (vy - (H - mg)) / vx, bL = (vy - mg) / vx;            // left endpoint on-screen
-      const aR = (mg - vy) / (W - vx), bR = (H - mg - vy) / (W - vx);  // right endpoint on-screen
-      const lo = Math.max(aL, aR), hi = Math.min(bL, bR);
-      return lo < hi ? R(lo, hi) : 0;
-    };
+    let dragging = false, lx = 0, ly = 0;
 
     const initSequence = () => {
-      const key = pickPattern();
-      buildPattern(key);
-      beamSlope = pickSlope();   // a new straight line through the centre, random angle
-      try {
-        (window as any).colliderPattern = LABELS[key];
-        window.dispatchEvent(new CustomEvent("collider:pattern", { detail: LABELS[key] }));
-      } catch (e) {}
+      const key = pickPattern(); buildPattern(key);
+      try { (window as any).colliderPattern = LABELS[key]; window.dispatchEvent(new CustomEvent("collider:pattern", { detail: LABELS[key] })); } catch (e) {}
     };
-
     const redraw = () => { if (!started) render(FULL, 1); else render(clock, phaseFade(clock)); };
 
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame);
-      if (!visible) { lastNow = now; return; }   // freeze offscreen
-      if (now - lastNow < 32) return;            // ~30fps + dt gate
+      if (!visible) { lastNow = now; return; }
+      if (now - lastNow < 32) return;
       const dt = Math.min(now - lastNow, 50); lastNow = now;
+      if (!dragging) yaw += AUTO_YAW;
       if (quickFading) {
-        qf += dt;
-        render(frozenClock, Math.max(0, 1 - qf / QUICK_FADE));
+        qf += dt; render(frozenClock, Math.max(0, 1 - qf / QUICK_FADE));
         if (qf >= QUICK_FADE) { quickFading = false; initSequence(); clock = 0; }
         return;
       }
       clock += dt;
-      if (clock >= SEQ) { clock -= SEQ; initSequence(); }   // auto: next collision
+      if (clock >= SEQ) { clock -= SEQ; initSequence(); }
       render(clock, phaseFade(clock));
     };
-
     const start = () => { if (started) return; started = true; initSequence(); clock = 0; lastNow = performance.now(); raf = requestAnimationFrame(frame); };
-    const restart = () => {
-      if (!started) { start(); return; }
-      if (quickFading) return;
-      frozenClock = clock; qf = 0; quickFading = true;
-    };
+    const restart = () => { if (!started) { start(); return; } if (quickFading) return; frozenClock = clock; qf = 0; quickFading = true; };
 
     const resize = () => {
       dpr = Math.min(window.devicePixelRatio || 1, 2);
       W = canvas.clientWidth; H = canvas.clientHeight;
       canvas.width = Math.max(1, Math.round(W * dpr)); canvas.height = Math.max(1, Math.round(H * dpr));
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      vx = W * VFX; vy = H * VFY;
-      beamSlope = pickSlope();
-      buildPattern(lastPattern || pickPattern());
+      minWH = Math.min(W, H); ox = W * 0.56; oy = H * 0.5;
       redraw();
     };
     resize();
     window.addEventListener("resize", resize);
 
+    canvas.addEventListener("pointerdown", (e) => { dragging = true; lx = e.clientX; ly = e.clientY; canvas.setPointerCapture(e.pointerId); });
+    canvas.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      yaw += (e.clientX - lx) * 0.006; pitch += (e.clientY - ly) * 0.006;
+      pitch = Math.max(-1.2, Math.min(1.2, pitch)); lx = e.clientX; ly = e.clientY;
+      if (!started || quickFading) redraw();
+    });
+    const endDrag = () => { dragging = false; };
+    canvas.addEventListener("pointerup", endDrag);
+    canvas.addEventListener("pointercancel", endDrag);
+
     new MutationObserver(() => { readColours(); redraw(); })
       .observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
     (window as any).colliderRestart = restart;
-    (window as any).colliderSetColourful = (on: boolean) => { colourful = !!on; redraw(); };
+    (window as any).colliderSetMode = (m: string) => { if (m === "colourful" || m === "quiet" || m === "muted") { mode = m; redraw(); } };
+    (window as any).colliderSetBarrel = (on: boolean) => { showBarrel = !!on; redraw(); };
 
     if (reduce.matches) {
-      initSequence(); render(FULL, 1);            // one settled event, no motion
+      initSequence(); render(FULL, 1);
     } else {
       const io = new IntersectionObserver((es) => { visible = es[0].isIntersecting; if (visible) start(); });
       io.observe(canvas);

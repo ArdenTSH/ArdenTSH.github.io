@@ -1,13 +1,15 @@
 ---
 // ColliderControls — bottom-right controls for the CV page's collision background.
-// "colour" toggles the colourful pT scale (DEFAULT on; persisted in localStorage);
-// the readout shows which of the 15 topologies is on screen; "restart" fades the
-// current collision out and fires a fresh one. Driven by the window hooks that
-// ColliderField exposes (colliderSetColourful / colliderRestart / "collider:pattern").
+// "colour" cycles three modes — colourful (full pT rainbow) → quiet (colour by
+// object type) → muted (monochrome ink) — persisted in localStorage; the readout
+// shows which of the 15 topologies is on screen; "restart" fades the current
+// collision out and fires a fresh one. Driven by the window hooks ColliderField
+// exposes (colliderSetMode / colliderRestart / "collider:pattern").
 ---
 
 <div class="collider-controls">
-  <button type="button" class="cc-btn" data-cc-colour aria-pressed="true">colour: on</button>
+  <button type="button" class="cc-btn" data-cc-mode aria-pressed="true">color</button>
+  <button type="button" class="cc-btn" data-cc-barrel aria-pressed="true">barrel</button>
   <span class="cc-readout" data-cc-pattern aria-live="polite">—</span>
   <button type="button" class="cc-btn" data-cc-restart>restart ↻</button>
 </div>
@@ -63,27 +65,46 @@
 </style>
 
 <script>
-  const colourBtn = document.querySelector<HTMLButtonElement>("[data-cc-colour]");
+  const modeBtn = document.querySelector<HTMLButtonElement>("[data-cc-mode]");
   const restartBtn = document.querySelector<HTMLButtonElement>("[data-cc-restart]");
   const patternEl = document.querySelector<HTMLElement>("[data-cc-pattern]");
 
-  // colour is the DEFAULT now: unset → on.
-  const getColour = () => {
-    try { const v = localStorage.getItem("collider-colour"); return v === null ? true : v === "on"; } catch (e) { return true; }
+  // three modes cycled by the button; colourful is the default (unset → colourful).
+  const MODES = ["colourful", "quiet", "muted"] as const;
+  type Mode = typeof MODES[number];
+  const getMode = (): Mode => {
+    try { const v = localStorage.getItem("collider-mode"); return (MODES as readonly string[]).includes(v ?? "") ? (v as Mode) : "colourful"; } catch (e) { return "colourful"; }
   };
-  const apply = (on: boolean) => {
-    if (colourBtn) {
-      colourBtn.setAttribute("aria-pressed", String(on));
-      colourBtn.textContent = on ? "colour: on" : "colour: off";
+  // short button labels: colourful → "color", quiet → "type", muted → "mono".
+  const LABEL: Record<Mode, string> = { colourful: "color", quiet: "type", muted: "mono" };
+  const apply = (m: Mode) => {
+    if (modeBtn) {
+      modeBtn.setAttribute("aria-pressed", String(m !== "muted"));   // styled "active" unless monochrome
+      modeBtn.setAttribute("aria-label", "collision colouring: " + m);
+      modeBtn.textContent = LABEL[m];
     }
-    (window as any).colliderSetColourful?.(on);
+    (window as any).colliderSetMode?.(m);
   };
-  apply(getColour());
-  colourBtn?.addEventListener("click", () => {
-    const on = !getColour();
-    try { localStorage.setItem("collider-colour", on ? "on" : "off"); } catch (e) {}
-    apply(on);
+  apply(getMode());
+  modeBtn?.addEventListener("click", () => {
+    const next = MODES[(MODES.indexOf(getMode()) + 1) % MODES.length];
+    try { localStorage.setItem("collider-mode", next); } catch (e) {}
+    apply(next);
   });
+  // barrel toggle: show/hide the cylindrical detector wireframe (default on)
+  const barrelBtn = document.querySelector<HTMLButtonElement>("[data-cc-barrel]");
+  const getBarrel = () => { try { const v = localStorage.getItem("collider-barrel"); return v === null ? true : v === "on"; } catch (e) { return true; } };
+  const applyBarrel = (on: boolean) => {
+    barrelBtn?.setAttribute("aria-pressed", String(on));
+    (window as any).colliderSetBarrel?.(on);
+  };
+  applyBarrel(getBarrel());
+  barrelBtn?.addEventListener("click", () => {
+    const on = !getBarrel();
+    try { localStorage.setItem("collider-barrel", on ? "on" : "off"); } catch (e) {}
+    applyBarrel(on);
+  });
+
   restartBtn?.addEventListener("click", () => (window as any).colliderRestart?.());
 
   // the readout follows the current topology
