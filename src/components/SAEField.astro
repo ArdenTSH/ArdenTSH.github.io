@@ -1,0 +1,377 @@
+---
+// SAEField — ambient background for the interpretability / AI-safety page only
+// ("Inside the Black Box"). A live SPARSE AUTOENCODER reading a streaming message.
+//
+// This is the flagship mechanistic-interpretability move (Anthropic's
+// monosemanticity work, the "Golden Gate Bridge" feature): the model's dense
+// internal activation at each token is pushed through an over-complete dictionary
+// of features under a hard SPARSITY constraint — so out of a thousand features
+// only a handful fire — and each firing feature is a single human-legible concept.
+// Pulling that legible structure out of a trained network is exactly the work the
+// page is about ("effective theories out of complicated systems").
+//
+// It runs for real. A small message streams in along the top; each token forms a
+// dense activation x ∈ ℝ¹⁶ from a few hidden concept directions; a top-k sparse
+// autoencoder (random over-complete W_enc, hard top-k) encodes it; the k winning
+// features IGNITE in the dictionary field and decay, so the field shimmers with
+// sparse bursts. Some dictionary atoms ARE the concept directions — when their
+// concept is present they fire and surface their label; the rest are the
+// uninterpreted majority. The L0 readout (active / total) is the genuine count.
+//
+// Theme-adaptive: blue features blooming on near-black in the real view, bold
+// graphite strikes on paper in the notebook view. Paused offscreen; reduced-motion
+// renders one settled frame (a sparse pattern, one label, no motion); cleans up its
+// RAF/observers under Astro navigation.
+---
+
+<canvas class="sae-field" aria-hidden="true"></canvas>
+
+<style>
+  .sae-field {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    pointer-events: none; /* purely ambient — scroll / clicks pass straight through */
+  }
+</style>
+
+<script>
+  const canvas = document.querySelector<HTMLCanvasElement>("canvas.sae-field");
+  const ctx = canvas?.getContext("2d");
+  if (canvas && ctx) {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const TAU = Math.PI * 2;
+
+    // ---- theme colours -----------------------------------------------------
+    type RGB = [number, number, number];
+    const WHITE: RGB = [255, 255, 255];
+    const parseRGB = (str: string): RGB => {
+      const s = (str || "").trim();
+      if (s[0] === "#") {
+        let h = s.slice(1);
+        if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+        const n = parseInt(h, 16);
+        return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+      }
+      const m = s.match(/-?\d+(?:\.\d+)?/g);
+      if (m && m.length >= 3) return [+m[0], +m[1], +m[2]];
+      return [128, 128, 128];
+    };
+    let accent: RGB = [77, 155, 230];
+    let accentStrong: RGB = [108, 176, 239];
+    let ink: RGB = [233, 237, 243];
+    let light = false;
+    const lum = (c: RGB) => (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
+    const readColours = () => {
+      const cs = getComputedStyle(document.documentElement);
+      accent = parseRGB(cs.getPropertyValue("--accent"));
+      accentStrong = parseRGB(cs.getPropertyValue("--accent-strong"));
+      ink = parseRGB(cs.getPropertyValue("--text-primary"));
+      light = lum(parseRGB(cs.getPropertyValue("--bg"))) > 0.5;
+    };
+    readColours();
+    const mix = (a: RGB, b: RGB, t: number): RGB => [
+      a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t,
+    ];
+    const rgba = (c: RGB, al: number) =>
+      `rgba(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])},${al})`;
+
+    // ---- deterministic RNG (stable scene; varies a little per load) ---------
+    let seed = (performance.now() % 100000) + 2048;
+    const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+    const gaussish = () => (rnd() + rnd() + rnd() - 1.5) / 1.5;
+
+    // ---- the hidden concepts the message is built from ---------------------
+    // Interpretability-classic features (some alignment-relevant, some physics —
+    // the page's bridge), each a fixed random unit direction in activation space.
+    const D_MODEL = 16;
+    const LABELS = [
+      "the Golden Gate Bridge", "deception", "sycophantic praise", "unsafe code",
+      "refusal", "scheming", "gravitational waves", "renormalisation group",
+      "spontaneous symmetry breaking", "neutrino oscillation", "cosmic inflation",
+      "Feynman diagrams", "DNA base pairs", "code indentation", "the number pi",
+      "self-reference", 'the concept of "I"', "a key change in music",
+    ];
+    const NC = LABELS.length;
+    const conceptDir = new Float32Array(NC * D_MODEL); // unit directions
+    const conceptId = new Int32Array(NC);              // pseudo feature ids for display
+    for (let c = 0; c < NC; c++) {
+      let n = 0;
+      for (let d = 0; d < D_MODEL; d++) { const v = gaussish(); conceptDir[c * D_MODEL + d] = v; n += v * v; }
+      n = Math.sqrt(n) || 1;
+      for (let d = 0; d < D_MODEL; d++) conceptDir[c * D_MODEL + d] /= n;
+      conceptId[c] = 1000 + Math.floor(rnd() * 8999);
+    }
+
+    // ---- the dictionary (built on resize: it tiles the canvas) -------------
+    let cols = 1, rows = 1, D_DICT = 1, K = 8;
+    let cellW = 1, cellH = 1;
+    let Wenc = new Float32Array(0);     // [D_DICT * D_MODEL] feature directions
+    let cellConc = new Int32Array(0);   // concept index per cell, or -1 (uninterpreted)
+    let bright = new Float32Array(0);   // current ignition 0..1 per cell
+    let srcX = new Float32Array(0);     // x of the message token that last lit this feature
+    let cx = new Float32Array(0), cy = new Float32Array(0); // jittered cell centres
+    let baseR = new Float32Array(0);    // dormant dot radius per cell
+    let fbuf = new Float32Array(0);     // encoder scratch
+    const xbuf = new Float32Array(D_MODEL);
+
+    const buildDict = () => {
+      const CELL = 32;
+      cols = Math.max(10, Math.round(W / CELL));
+      rows = Math.max(7, Math.round(H / CELL));
+      D_DICT = cols * rows;
+      cellW = W / cols; cellH = H / rows;
+      K = Math.min(16, Math.max(7, Math.round(D_DICT * 0.013)));
+      Wenc = new Float32Array(D_DICT * D_MODEL);
+      cellConc = new Int32Array(D_DICT).fill(-1);
+      bright = new Float32Array(D_DICT);
+      srcX = new Float32Array(D_DICT);
+      cx = new Float32Array(D_DICT); cy = new Float32Array(D_DICT);
+      baseR = new Float32Array(D_DICT);
+      fbuf = new Float32Array(D_DICT);
+      // random unit feature directions; jittered grid so it reads as a feature
+      // cloud, not graph paper
+      for (let i = 0; i < D_DICT; i++) {
+        let n = 0;
+        for (let d = 0; d < D_MODEL; d++) { const v = gaussish(); Wenc[i * D_MODEL + d] = v; n += v * v; }
+        n = Math.sqrt(n) || 1;
+        for (let d = 0; d < D_MODEL; d++) Wenc[i * D_MODEL + d] /= n;
+        const col = i % cols, row = (i / cols) | 0;
+        cx[i] = (col + 0.5) * cellW + (rnd() - 0.5) * cellW * 0.5;
+        cy[i] = (row + 0.5) * cellH + (rnd() - 0.5) * cellH * 0.5;
+        baseR[i] = 0.6 + rnd() * 1.1;
+      }
+      // plant each concept on a distinct cell: that atom's direction IS the concept,
+      // so it fires (and can be labelled) whenever its concept is in the message.
+      const used = new Set<number>();
+      for (let c = 0; c < NC; c++) {
+        let i = 0;
+        do { i = Math.floor(rnd() * D_DICT); } while (used.has(i));
+        used.add(i);
+        cellConc[i] = c;
+        for (let d = 0; d < D_MODEL; d++) Wenc[i * D_MODEL + d] = conceptDir[c * D_MODEL + d];
+      }
+    };
+
+    // ---- canvas ------------------------------------------------------------
+    let W = 1, H = 1, dpr = 1, padX = 0;
+    const resize = () => {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      W = canvas.clientWidth; H = canvas.clientHeight;
+      canvas.width = Math.max(1, Math.round(W * dpr));
+      canvas.height = Math.max(1, Math.round(H * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      padX = Math.min(64, W * 0.05);
+      buildDict();
+      callouts.length = 0;
+    };
+
+    // ---- the streaming message + the SAE forward pass ----------------------
+    const STRIP_Y = 26;
+    let MSG_LEN = 40, msgPos = 0;
+    const idxBuf: number[] = [];
+    type Callout = { i: number; label: string; id: number; side: number; ax: number; ay: number; tw: number; life: number };
+    const CO_LIFE = 92, CO_MAX = 2, CO_GAP = 20;
+    const callouts: Callout[] = [];
+    let lastSpawn = -999, frameNo = 0;
+
+    // pull a token's worth of activation through the dictionary and ignite the winners
+    const stepToken = () => {
+      // x = a sparse mix of 1–3 concept directions + a little noise
+      xbuf.fill(0);
+      const nAct = 1 + (rnd() < 0.55 ? 0 : rnd() < 0.6 ? 1 : 2);
+      for (let a = 0; a < nAct; a++) {
+        const c = Math.floor(rnd() * NC);
+        const coeff = 0.7 + rnd() * 0.9;
+        for (let d = 0; d < D_MODEL; d++) xbuf[d] += coeff * conceptDir[c * D_MODEL + d];
+      }
+      for (let d = 0; d < D_MODEL; d++) xbuf[d] += 0.12 * gaussish();
+      // encode: f = relu(W_enc · x)
+      let fmax = 1e-6;
+      for (let i = 0; i < D_DICT; i++) {
+        let dot = 0; const b = i * D_MODEL;
+        for (let d = 0; d < D_MODEL; d++) dot += Wenc[b + d] * xbuf[d];
+        const v = dot > 0 ? dot : 0;
+        fbuf[i] = v; if (v > fmax) fmax = v;
+      }
+      // hard top-k sparsity: only the k strongest features survive
+      idxBuf.length = 0;
+      for (let i = 0; i < D_DICT; i++) if (fbuf[i] > 0) idxBuf.push(i);
+      idxBuf.sort((a, b) => fbuf[b] - fbuf[a]);
+      const k = Math.min(K, idxBuf.length);
+      const span = W - 2 * padX;
+      const hx = padX + (msgPos * span) / (MSG_LEN - 1); // the token being read = the wire source
+      let topLabeled = -1, topVal = 0;
+      for (let r = 0; r < k; r++) {
+        const i = idxBuf[r];
+        const nb = fbuf[i] / fmax;
+        if (nb > bright[i]) bright[i] = nb;
+        srcX[i] = hx;
+        if (cellConc[i] >= 0 && fbuf[i] > topVal) { topVal = fbuf[i]; topLabeled = i; }
+      }
+      // surface the dominant interpretable feature as a labelled callout
+      if (topLabeled >= 0 && topVal / fmax > 0.5) spawnCallout(topLabeled);
+    };
+
+    const spawnCallout = (i: number) => {
+      if (frameNo - lastSpawn < CO_GAP || callouts.length >= CO_MAX) return;
+      if (callouts.some((c) => c.i === i)) return;
+      const c = cellConc[i];
+      const label = LABELS[c], id = conceptId[c];
+      const side = cx[i] < W * 0.5 ? -1 : 1; // anchor into the nearer gutter
+      ctx.font = '500 13px ui-monospace, SFMono-Regular, Menlo, monospace';
+      const tw = ctx.measureText(`#${id} · ${label}`).width;
+      const ax = side < 0 ? 18 : W - 18;
+      const ay = Math.max(STRIP_Y + 34, Math.min(H - 60, cy[i]));
+      callouts.push({ i, label, id, side, ax, ay, tw, life: CO_LIFE });
+      lastSpawn = frameNo;
+    };
+
+    // ---- drawing -----------------------------------------------------------
+    const circle = (x: number, y: number, r: number) => { ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); };
+    const square = (x: number, y: number, s: number) => ctx.fillRect(x - s / 2, y - s / 2, s, s);
+
+    const drawCells = () => {
+      // dormant dictionary: a faint field of features
+      ctx.fillStyle = rgba(ink, light ? 0.085 : 0.05);
+      for (let i = 0; i < D_DICT; i++) { const r = baseR[i]; ctx.fillRect(cx[i] - r, cy[i] - r, r * 2, r * 2); }
+      // encoder wires: each lit feature is tied back to the message token that fired
+      // it, so every token sends a bright fan down into the dictionary.
+      ctx.lineCap = "round";
+      for (let i = 0; i < D_DICT; i++) {
+        const b = bright[i];
+        if (b < 0.04) continue;
+        ctx.strokeStyle = rgba(light ? ink : accent, (light ? 0.5 : 0.42) * b);
+        ctx.lineWidth = 0.6 + (light ? 2.2 : 2.0) * b;
+        ctx.beginPath(); ctx.moveTo(srcX[i], STRIP_Y); ctx.lineTo(cx[i], cy[i]); ctx.stroke();
+      }
+      // fired features: big blooms in the real view, bold strikes on paper
+      for (let i = 0; i < D_DICT; i++) {
+        const b = bright[i];
+        if (b < 0.03) continue;
+        if (light) {
+          ctx.fillStyle = rgba(ink, 0.14 * b); square(cx[i], cy[i], 10 + 24 * b);
+          ctx.fillStyle = rgba(ink, Math.min(1, 0.6 + 0.5 * b)); square(cx[i], cy[i], 3.5 + 8 * b);
+        } else {
+          ctx.fillStyle = rgba(accent, 0.12 * b); circle(cx[i], cy[i], 6 + 30 * b);
+          ctx.fillStyle = rgba(accentStrong, 0.30 * b); circle(cx[i], cy[i], 3 + 12 * b);
+          ctx.fillStyle = rgba(mix(accentStrong, WHITE, b * 0.75), Math.min(1, 0.7 + 0.3 * b)); circle(cx[i], cy[i], 1.5 + 4 * b);
+        }
+      }
+    };
+
+    const drawStrip = () => {
+      // the message: a token track with a read-head sweeping along it
+      const span = W - 2 * padX;
+      for (let t = 0; t < MSG_LEN; t++) {
+        const x = padX + (t * span) / (MSG_LEN - 1);
+        ctx.fillStyle = rgba(ink, light ? 0.22 : 0.16);
+        ctx.fillRect(x - 0.5, STRIP_Y - 4, 1, 8);
+      }
+      const hx = padX + (msgPos * span) / (MSG_LEN - 1);
+      if (!light) { ctx.fillStyle = rgba(accent, 0.14); circle(hx, STRIP_Y, 9); }
+      ctx.fillStyle = rgba(light ? ink : accent, light ? 0.85 : 0.95);
+      square(hx, STRIP_Y, light ? 7 : 6);
+    };
+
+    const drawCallouts = () => {
+      ctx.font = '500 13px ui-monospace, SFMono-Regular, Menlo, monospace';
+      ctx.textBaseline = "middle";
+      for (const c of callouts) {
+        const t = c.life / CO_LIFE; // 1 → 0
+        const a = Math.min(1, (1 - t) / 0.14) * Math.min(1, t / 0.32);
+        const col = light ? ink : accentStrong;
+        const elbow = c.side < 0 ? c.ax + c.tw + 10 : c.ax - c.tw - 10;
+        ctx.strokeStyle = rgba(col, a * 0.5); ctx.lineWidth = 1.1; ctx.lineCap = "round";
+        ctx.beginPath(); ctx.moveTo(cx[c.i], cy[c.i]); ctx.lineTo(elbow, c.ay); ctx.stroke();
+        ctx.fillStyle = rgba(col, a); circle(cx[c.i], cy[c.i], 2.8);
+        // an underscore tick under the label, like a tagged readout
+        ctx.beginPath(); ctx.moveTo(c.side < 0 ? c.ax : c.ax - c.tw, c.ay + 10);
+        ctx.lineTo(c.side < 0 ? c.ax + c.tw : c.ax, c.ay + 10); ctx.stroke();
+        ctx.textAlign = c.side < 0 ? "left" : "right";
+        ctx.fillStyle = rgba(col, a);
+        ctx.fillText(`#${c.id} · ${c.label}`, c.ax, c.ay);
+      }
+      ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    };
+
+    const drawHud = () => {
+      ctx.font = '500 11px ui-monospace, SFMono-Regular, Menlo, monospace';
+      ctx.fillStyle = rgba(ink, light ? 0.42 : 0.34);
+      ctx.fillText(`sparse autoencoder · L0 ${K} / ${D_DICT} features`, 18, H - 18);
+    };
+
+    const draw = () => {
+      ctx.clearRect(0, 0, W, H);
+      drawCells();
+      drawStrip();
+      drawCallouts();
+      drawHud();
+    };
+
+    // ---- lifecycle ---------------------------------------------------------
+    const animated = !reduce.matches;
+    const TOKEN_FRAMES = 11, DECAY = 0.93;
+    let last = 0, raf = 0, visible = true, sinceToken = 0;
+
+    const tick = () => {
+      frameNo++;
+      for (let i = 0; i < D_DICT; i++) { bright[i] *= DECAY; if (bright[i] < 0.004) bright[i] = 0; }
+      if (++sinceToken >= TOKEN_FRAMES) { sinceToken = 0; stepToken(); msgPos = (msgPos + 1) % MSG_LEN; }
+      for (let n = callouts.length - 1; n >= 0; n--) { if (--callouts[n].life <= 0) callouts.splice(n, 1); }
+      draw();
+    };
+
+    const drawStatic = () => {
+      // settle a sparse pattern (a few tokens' fans, the most recent brightest),
+      // with labels — no motion
+      for (let i = 0; i < D_DICT; i++) bright[i] = 0;
+      callouts.length = 0; lastSpawn = -999; frameNo = 0;
+      msgPos = 0;
+      for (let s = 0; s < 4; s++) {
+        for (let i = 0; i < D_DICT; i++) bright[i] *= 0.78; // age earlier tokens
+        stepToken();
+        msgPos = (msgPos + 9) % MSG_LEN;
+      }
+      draw();
+    };
+
+    const frame = (now: number) => {
+      raf = requestAnimationFrame(frame);
+      if (!visible) return;
+      if (now - last < 33) return; // ~30fps
+      last = now;
+      tick();
+    };
+
+    resize();
+    MSG_LEN = Math.max(24, Math.min(64, Math.round(W / 26)));
+    window.addEventListener("resize", () => {
+      resize();
+      MSG_LEN = Math.max(24, Math.min(64, Math.round(W / 26)));
+      if (!animated) drawStatic();
+    });
+
+    let io: IntersectionObserver | null = null;
+    if (animated) {
+      raf = requestAnimationFrame(frame);
+      io = new IntersectionObserver((es) => { visible = es[0].isIntersecting; });
+      io.observe(canvas);
+    } else {
+      drawStatic();
+    }
+
+    const themeObserver = new MutationObserver(() => { readColours(); if (!animated) drawStatic(); });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+    const cleanup = () => {
+      cancelAnimationFrame(raf);
+      io?.disconnect();
+      themeObserver.disconnect();
+      document.removeEventListener("astro:before-swap", cleanup);
+    };
+    document.addEventListener("astro:before-swap", cleanup);
+  }
+</script>
