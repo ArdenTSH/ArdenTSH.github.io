@@ -67,9 +67,9 @@
     const EXIT_AT = -0.05;           // a batch recycles (goes idle) when its centroid is ~5% past the left edge
     const EXPLOIT_AT = 0.6;          // converged by ~60% across the screen
     const W_MIN = 0.1, W_MAX = 0.9;  // inertia: linearly decreasing across the crossing (high -> low). >1 would need a speed cap to stay stable; <1 is stable on its own
-    const C1 = 0.11;                 // cognitive: pull to the particle's OWN best (self-tether)
+    const C1 = 0.15;                 // cognitive: pull to the particle's OWN best (self-tether)
     const C2 = 0.03;                 // social: pull to gbest (core PSO, ON throughout). gentle while searching...
-    const C2_HIGH = 0.06, C2_RAMP_AT = 0.32, C2_RAMP_END = 0.38; // ...then ramps LINEARLY 0.03 -> 0.06 between 32% and 38% across, to gather harder once the well is found
+    const C2_HIGH = 0.12, C2_RAMP_AT = 0.26, C2_RAMP_END = 0.46; // ...then ramps LINEARLY 0.03 -> 0.06 between 32% and 38% across, to gather harder once the well is found
     const THERMAL = 0.012, TH_DAMP = 0.6; // wobble; damps as the cluster settles (no speed cap — the decreasing w<1 keeps it stable)
     // entry dash: a gentle leftward boost held at BOOST for the first 3.5% of the crossing, then
     // easing LINEARLY to BOOST_TAIL by 13%, held at BOOST_TAIL until 37% across (BOOST_TAIL_END),
@@ -83,8 +83,8 @@
     // the right (never spawned mid-screen). Wells sit at x = k·WELL_SPACING, y alternating by parity,
     // carved in WARPED space (organic, never circular). A swarm spawns each time a well crosses
     // WELL_TRIGGER across, then DISCOVERS it via gbest as it journeys in — no seeding, no steering.
-    const WELL_DEPTH_A = 2.5, WELL_SIG_A = 4;        // each well = TWO basins, same centre: a broad one (depth 4, σ 4)...
-    const WELL_DEPTH_B = 1, WELL_SIG_B = 0.5;      // ...plus a narrow one (depth 2, σ 1.5) for a sharper bottom
+    const WELL_DEPTH_A = 1.5, WELL_SIG_A = 4;        // each well = TWO basins, same centre: a broad one (depth 4, σ 4)...
+    const WELL_DEPTH_B = 2, WELL_SIG_B = 0.5;      // ...plus a narrow one (depth 2, σ 1.5) for a sharper bottom
     const WELL_SPACING = 9.3, WELL_TRIGGER = 0.55; // wells 9.3 world-units apart; a swarm spawns when a well reaches 55% across
 
     type Swarm = {
