@@ -86,6 +86,13 @@
     const WELL_DEPTH_A = 1.5, WELL_SIG_A = 4;        // each well = TWO basins, same centre: a broad one (depth 4, σ 4)...
     const WELL_DEPTH_B = 2, WELL_SIG_B = 0.5;      // ...plus a narrow one (depth 2, σ 1.5) for a sharper bottom
     const WELL_SPACING = 9.3, WELL_TRIGGER = 0.55; // wells 9.3 world-units apart; a swarm spawns when a well reaches 55% across
+    // widen ONLY the first->second well gap (the pair you see at page load); every later gap
+    // stays at WELL_SPACING. firstWellK = the well the first swarm dives into at load; every
+    // well AFTER it is pushed right by FIRST_GAP_EXTRA, so just that one seam grows.
+    const firstWellK = Math.floor((WELL_TRIGGER * worldW()) / WELL_SPACING);
+    const FIRST_GAP_EXTRA = 4;       // world units added to the first->second gap only (0 = uniform); tune to taste
+    const WELL_PHASE = 0.20;         // shift the whole lattice right by this fraction of screen width: at load k=0 sits at WELL_PHASE across, so later wells start off-screen right and stream in
+    const wellX = (k: number) => WELL_PHASE * worldW() + k * WELL_SPACING + (k > firstWellK ? FIRST_GAP_EXTRA : 0);
 
     type Swarm = {
       wx: Float32Array; wy: Float32Array; vx: Float32Array; vy: Float32Array;
@@ -124,7 +131,7 @@
       const wH = worldH(), m = 3 * WELL_SIG_A;   // include wells whose (broad) tails still reach the visible edges
       const k0 = Math.floor((scroll - m) / WELL_SPACING), k1 = Math.ceil((scroll + worldW() + m) / WELL_SPACING);
       for (let k = k0; k <= k1; k++) {
-        const x = k * WELL_SPACING, y = (((k % 2) + 2) % 2 === 0 ? 0.27 : 0.73) * wH;
+        const x = wellX(k), y = (((k % 2) + 2) % 2 === 0 ? 0.27 : 0.73) * wH;
         wells.push({ x, y, wax: warpX(x, y), way: warpY(x, y) });
       }
     };
@@ -158,7 +165,31 @@
     // the wells exist from frame 0 (a scrolling field); swarms stream in as wells reach the trigger.
     for (let i = 0; i < N_SWARMS; i++) swarms.push(makeSwarm());
     rebuildWells();
-    let nextWellK = Math.floor((scroll + WELL_TRIGGER * worldW()) / WELL_SPACING); // next well index to trigger a swarm (floor => one spawns at load)
+    let nextWellK = firstWellK; // next well index to trigger a swarm (= firstWellK => one spawns at load)
+
+    // ---- entry-boost DIRECTION (per particle) -------------------------------
+    // The boost SIZE comes from the schedule in step(); these only set its DIRECTION
+    // (same magnitude either way — "change the direction, not the velocity"). Two
+    // interchangeable versions; flip TWO_POINT_BOOST to switch. Both kept so the old
+    // splay stays tweakable.
+    const TWO_POINT_BOOST = true;
+    const SPLIT_X = 0.35;            // NEW: vertical aim-line at 35% across the screen (from the LEFT edge)
+    // NEW — aim the boost at one of two points: where the SPLIT_X line meets the top /
+    // bottom boundary. Top-half particles aim at the top point, bottom-half at the bottom
+    // one. An edge (near top/bottom) particle's aim is almost horizontal (small outward
+    // angle); a mid-height particle's is steep (big angle) — so the swarm is thrown into a
+    // top batch + a bottom batch, which reconverge once the boost fades and gbest gathers
+    // them back to the well.
+    const entryBoostTwoPoint = (wx: number, wy: number, boost: number, wH: number): [number, number] => {
+      const tx = scroll + SPLIT_X * worldW();        // target column (world x), pinned at 35% across the screen
+      const ty = wy < 0.5 * wH ? 0 : wH;             // top half -> top boundary, bottom half -> bottom boundary
+      const dx = tx - wx, dy = ty - wy, len = Math.hypot(dx, dy) || 1e-6;
+      return [boost * dx / len, boost * dy / len];   // unit aim × |boost| (magnitude unchanged)
+    };
+    // OLD — leftward push + a vertical splay that fans OUT then IN around mid-height,
+    // scaled by each particle's distance from the middle (kept for reverting / tweaking).
+    const entryBoostSplay = (wy: number, boost: number, vdir: number, cy: number, wH: number): [number, number] =>
+      [-boost, vdir * DASH_OUT * boost * (wy - cy) / (0.5 * wH)];
 
     // chaotic inertia (Feng 2007): a logistic map iterated each frame supplies the chaotic term z.
     let chaosZ = 0.37;
@@ -167,7 +198,7 @@
       chaosZ = 4 * chaosZ * (1 - chaosZ);   // logistic map -> sustained stochastic kicks throughout the run
       rebuildWells();                        // the periodic well field scrolls in with the world
       // a swarm spawns each time a well crosses WELL_TRIGGER across, so it journeys in to that well
-      while (scroll >= nextWellK * WELL_SPACING - WELL_TRIGGER * worldW()) {
+      while (scroll >= wellX(nextWellK) - WELL_TRIGGER * worldW()) {
         const idle = swarms.find((s) => !s.active);
         if (idle) spawnSwarm(idle, scroll + SPAWN_AHEAD * worldW());
         nextWellK++;
@@ -203,9 +234,12 @@
                    : (progress >= DASH_IN_AT && progress < DASH_TAIL) ? -1 : 0;
         for (let k = 0; k < PER; k++) {
           const r1x = rnd(), r1y = rnd(), r2x = rnd(), r2y = rnd();  // independent randoms per dimension
-          const vsplay = vdir * DASH_OUT * boost * (s.wy[k] - cy) / (0.5 * wH);  // outward (+) / inward (−), scaled by the boost
-          s.vx[k] = w * s.vx[k] + cCog * r1x * (s.pbx[k] - s.wx[k]) + cSoc * r2x * (s.gbx - s.wx[k]) - boost + (rnd() - 0.5) * thermal;
-          s.vy[k] = w * s.vy[k] + cCog * r1y * (s.pby[k] - s.wy[k]) + cSoc * r2y * (s.gby - s.wy[k]) + vsplay + (rnd() - 0.5) * thermal;
+          // entry boost — NEW two-point aim (default) or the OLD outward/inward splay; same magnitude.
+          const [bx, by] = TWO_POINT_BOOST
+            ? entryBoostTwoPoint(s.wx[k], s.wy[k], boost, wH)
+            : entryBoostSplay(s.wy[k], boost, vdir, cy, wH);
+          s.vx[k] = w * s.vx[k] + cCog * r1x * (s.pbx[k] - s.wx[k]) + cSoc * r2x * (s.gbx - s.wx[k]) + bx + (rnd() - 0.5) * thermal;
+          s.vy[k] = w * s.vy[k] + cCog * r1y * (s.pby[k] - s.wy[k]) + cSoc * r2y * (s.gby - s.wy[k]) + by + (rnd() - 0.5) * thermal;
           // no speed cap — inertia (w < 1, linearly decreasing) keeps the dynamics stable on its own.
           s.wx[k] += s.vx[k]; s.wy[k] += s.vy[k];
           if (s.wy[k] < 0) { s.wy[k] = -s.wy[k]; s.vy[k] = -s.vy[k]; }
