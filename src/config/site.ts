@@ -13,7 +13,7 @@ export const site = {
   // The home hero paragraph: who you are, in a few honest sentences.
   intro:
     "I'm heading to Cambridge for the MASt in Astrophysics, graduating from BSc Physics with Theoretical Physics at King's College London, with the aim to do a PhD in Theoretical Physics. \
-    My path consists of computational molecular physics, experimental particle physics using machine learning, \
+    My work consists of computational molecular physics, experimental particle physics using machine learning, \
     and now theoretical cosmology. I am fascinated by the symmetries of nature and how to observe them. Right now I'm looking into the beginning of the unvierse, asking whether \
     cosmological-collider signatures survive into the gravitational-wave background. \
     Alongside physics, I write on AI safety and have a deep interest in interpretability.",

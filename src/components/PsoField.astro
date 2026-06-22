@@ -100,13 +100,13 @@
     // WELL_TRIGGER across, then DISCOVERS it via gbest as it journeys in — no seeding, no steering.
     const WELL_DEPTH_A = 2, WELL_SIG_A = 4;        // each well = TWO basins, same centre: a broad one (depth 4, σ 4)...
     const WELL_DEPTH_B = 2, WELL_SIG_B = 0.5;      // ...plus a narrow one (depth 2, σ 1.5) for a sharper bottom
-    const WELL_SPACING = 0.4, WELL_TRIGGER = 0.29; // wells 0.4 (40%) of the SCREEN WIDTH apart (·worldW() → world units); a swarm spawns when a well reaches p=0.29 (29% across from the RIGHT edge)
+    const WELL_SPACING = 0.4, WELL_TRIGGER = 0.27; // wells 0.4 (40%) of the SCREEN WIDTH apart (·worldW() → world units); a swarm spawns when a well reaches p=0.29 (29% across from the RIGHT edge)
     // widen ONLY the first->second well gap (the pair you see at page load); every later gap
     // stays at WELL_SPACING. firstWellK = the well the first swarm dives into at load; every
     // well AFTER it is pushed right by FIRST_GAP_EXTRA, so just that one seam grows.
     const firstWellK = 0;            // well 0 is the load-time well (sits at p=WELL_PHASE), the FIRST_GAP_EXTRA seam AND the first swarm's target. nextWellK starts here, so well 0 is the first to cross WELL_TRIGGER and spawn a swarm (~1s after load — the WELL_PHASE→WELL_TRIGGER gap is only 0.02 of screen width).
     const FIRST_GAP_EXTRA = 0.02;      // fraction of SCREEN WIDTH added to the first->second gap only (≈ the old 0.5 world units; 0 = uniform). tune to taste
-    const WELL_PHASE = 0.27;         // p of well k=0 at scroll=0: it sits at p=0.27 (27% across from the RIGHT edge); later wells start off-screen right (lower p) and stream in
+    const WELL_PHASE = 0.25;         // p of well k=0 at scroll=0: it sits at p=0.27 (27% across from the RIGHT edge); later wells start off-screen right (lower p) and stream in
     const wellX = (k: number) => ((1 - WELL_PHASE) + k * WELL_SPACING + (k > firstWellK ? FIRST_GAP_EXTRA : 0)) * worldW(); // all terms are screen-width fractions → ·worldW() once = world x
 
     type Swarm = {
