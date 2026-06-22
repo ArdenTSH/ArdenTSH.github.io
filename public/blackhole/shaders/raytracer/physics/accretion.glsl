@@ -19,10 +19,9 @@ float loopable_turbulence_time(float t) {
 }
 
 float disk_rotation_sign() {
-    // Reversed default: the disk spins the OTHER way when spin is zero/off (was the
-    // prograde +1.0); still flips again for explicitly negative a/M. Drives BOTH the
-    // swirl animation and the matter velocity / Doppler beaming, so they stay consistent.
-    return (bh_rotation_enabled > 0.5 && bh_spin < 0.0) ? 1.0 : -1.0;
+    // Keep the existing prograde default when spin is zero/off, but flip the
+    // co-rotating flow for explicitly negative a/M.
+    return (bh_rotation_enabled > 0.5 && bh_spin < 0.0) ? -1.0 : 1.0;
 }
 
 float equatorial_azimuth(vec2 xy) {
