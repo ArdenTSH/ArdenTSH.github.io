@@ -33,6 +33,11 @@ var resetTemporalAAHistory = function() {};
 var QUALITY_BENCHMARK_STORAGE_KEY = 'black-hole-quality-benchmark-v4';
 var QUALITY_BENCHMARK_SCHEMA_VERSION = 4;
 var QUALITY_BENCHMARK_TARGET_FRAME_MS = 32.0;
+// Background-perf flags. This BH is mostly a decorative, NPR-sketched background:
+// rendererPaused lets the parent stop the render loop when it's off-screen / tab-hidden /
+// hidden behind the GW intro; forceLowQuality pins a cheap tier (set by ?perf=bg).
+var rendererPaused = false;
+var forceLowQuality = false;
 // High-quality auto-upgrade is intentionally disabled: once volumetric effects
 // (GRMHD, thick torus, slim disk) are enabled, even high-end laptop GPUs
 // (e.g. RTX 4070 Laptop) cannot sustain acceptable frame rates at 'high'
@@ -151,6 +156,7 @@ function finishQualityBenchmark(qualityName, avgFrameMs) {
 }
 
 function beginQualityBenchmarkIfNeeded() {
+    if (forceLowQuality) return;   // background perf: the tier is pinned, never benchmark up to 'optimal'
     if (qualityBenchmarkState) return;
     if (readStoredQualityPreset()) return;
 
@@ -980,6 +986,7 @@ function init(glslSource, textures) {
         planet_radius: { type: "f" },
         disk_temperature: { type: "f", value: 10000.0 },
         accretion_inner_r: { type: "f", value: 3.0 },
+        disk_reveal_r: { type: "f", value: 1.12 },
         bh_spin: { type: "f", value: 0.90 },
         bh_spin_strength: { type: "f", value: 1.0 },
         bh_rotation_enabled: { type: "f", value: 1.0 },
@@ -1083,6 +1090,7 @@ function init(glslSource, textures) {
         uniforms.bh_rotation_enabled.value = shader.parameters.black_hole.spin_enabled ? 1.0 : 0.0;
         uniforms.look_exposure.value = shader.parameters.look.exposure;
         uniforms.look_disk_gain.value = shader.parameters.look.disk_gain;
+        uniforms.disk_reveal_r.value = shader.parameters.look.disk_reveal_r;
         uniforms.look_glow.value = shader.parameters.look.glow;
         uniforms.look_doppler_boost.value = shader.parameters.look.doppler_boost;
         uniforms.look_aberration_strength.value = shader.parameters.look.aberration_strength;
@@ -1286,6 +1294,18 @@ function init(glslSource, textures) {
     window.addEventListener( 'resize', onWindowResize, false );
 
     setupGUI();
+    // Background perf: ?perf=bg pins a cheap tier + caps DPR BEFORE the benchmark would
+    // measure up to 'optimal'. This BH is a decorative, NPR-sketched background behind
+    // opaque islands — it doesn't need retina × 'optimal' (geodesic ray-tracing is ~all
+    // the cost). forceLowQuality also makes beginQualityBenchmarkIfNeeded a no-op.
+    try {
+        if (new URLSearchParams(window.location.search).get('perf') === 'bg') {
+            forceLowQuality = true;
+            baseDevicePixelRatio = Math.min(baseDevicePixelRatio, 1.0);  // cap DPR (up to 4x on retina)
+            applyQualityPresetRuntime('mobile');                          // cheap tier: n_steps 28, res 0.55
+            applyRenderScaleFromSettings();                               // re-apply render size now
+        }
+    } catch (e) {}
     beginQualityBenchmarkIfNeeded();
 
     // ===== Render-style toggle (photoreal | sketch) — no shader recompile =====
@@ -1316,6 +1336,49 @@ function init(glslSource, textures) {
         else if (gridFromUrl === '1') setGrid(true);
     } catch (e) {}
 
+    // ===== Staged reveal: the GW intro hands off into the BH, then the parent fades
+    // the accretion disk, then the stars + background sky, in via these live "look"
+    // gains (read into uniforms every frame — no shader recompile). `?reveal=staged`
+    // starts everything dark so only the (alpha-inked) event-horizon sphere shows. =====
+    function setLook(o) {
+        if (!o) return;
+        var L = shader.parameters.look;
+        // Pin BOTH the parameter AND the uniform value directly. The per-frame uniform
+        // sync (above) normally does this, but a frame can render with the INITIAL uniform
+        // defaults (disk 1, spin 0.9) before that sync runs — which flashed the full Home BH
+        // for one frame at the reveal start. Writing the uniform here closes that window.
+        if (typeof o.disk_gain === 'number')   { L.disk_gain   = o.disk_gain;   uniforms.look_disk_gain.value   = o.disk_gain; }
+        // disk_reveal_r: inside-out reveal radius (0 hidden .. ~1.12 full) — the GW intro ramps it.
+        if (typeof o.disk_reveal_r === 'number') { L.disk_reveal_r = o.disk_reveal_r; uniforms.disk_reveal_r.value = o.disk_reveal_r; }
+        if (typeof o.star_gain === 'number')   { L.star_gain   = o.star_gain;   uniforms.look_star_gain.value   = o.star_gain; }
+        if (typeof o.galaxy_gain === 'number') { L.galaxy_gain = o.galaxy_gain; uniforms.look_galaxy_gain.value = o.galaxy_gain; }
+        if (typeof o.exposure === 'number')    { L.exposure    = o.exposure;    uniforms.look_exposure.value    = o.exposure; }
+        if (typeof o.glow === 'number')        { L.glow        = o.glow;        uniforms.look_glow.value        = o.glow; }
+        // spin: at a/M=0 the shadow is a PERFECT CENTRED CIRCLE (matches the dive's ball);
+        // the reveal ramps it back to the default 0.9 so the BH "spins up" into the real
+        // Kerr shadow (shifts + goes asymmetric) — the resting Home BH is left unchanged.
+        if (typeof o.spin === 'number')        { shader.parameters.black_hole.spin = o.spin; uniforms.bh_spin.value = o.spin; }
+        shader.needsUpdate = true; // force a redraw so the change shows immediately
+    }
+    window.blackHoleSetLook = setLook;
+    try {
+        var revealFromUrl = new URLSearchParams(window.location.search).get('reveal');
+        if (revealFromUrl === 'staged') setLook({ disk_gain: 1.0, disk_reveal_r: -0.1, star_gain: 0.0, galaxy_gain: 0.0, spin: 0.0 });
+    } catch (e) {}
+
+    // ===== Background perf: window.blackHoleSetPaused(true/false) lets the parent stop the
+    // render loop entirely when the BH is off-screen / tab-hidden / hidden behind the intro
+    // dive. The RAF stays alive so resume is instant. (?perf=bg quality pinning is applied
+    // earlier, before the benchmark, near beginQualityBenchmarkIfNeeded.) =====
+    function setRendererPaused(p) {
+        var was = rendererPaused;
+        rendererPaused = !!p;
+        if (was && !rendererPaused && typeof resetRendererFrameClock === 'function') {
+            resetRendererFrameClock();   // avoid a huge dt jump (disk animation) on resume
+        }
+    }
+    window.blackHoleSetPaused = setRendererPaused;
+
     window.addEventListener('message', function (ev) {
         if (ev.source !== window.parent) return;
         var d = ev.data;
@@ -1324,6 +1387,12 @@ function init(glslSource, textures) {
         }
         if (d && d.type === 'bh:setGrid') {
             setGrid(!!d.on);
+        }
+        if (d && d.type === 'bh:setLook') {
+            setLook(d.look);
+        }
+        if (d && d.type === 'bh:setPaused') {
+            setRendererPaused(!!d.paused);
         }
     });
 }
@@ -2084,6 +2153,10 @@ function stepRendererForOfflineRecording(dt) {
 
 function animate() {
     requestAnimationFrame( animate );
+
+    // Background perf: render loop paused (off-screen / tab-hidden / hidden behind the
+    // intro dive). The RAF stays alive so resume is instant, but zero GPU work happens.
+    if (rendererPaused) return;
 
     if (rendererOfflineSteppingActive) {
         stats.update();

@@ -1,0 +1,278 @@
+---
+// RgStaircase — ambient background for the interpretability / AI-safety page only
+// ("Inside the Black Box"). A screen-filling REAL-SPACE RENORMALISATION-GROUP FLOW.
+//
+// The page's first move is "interpretability as effective theory": like the
+// renormalisation group, you throw away microscopic detail and keep the handful of
+// collective variables that actually govern the system. This draws that as a flow.
+//
+// A grid of square panels fills the whole viewport and drifts slowly LEFTWARD. The
+// COARSENESS is fixed to screen position — finest on the right, coarsening toward the
+// left in discrete RG steps (16 → 8 → 4 → 2 cells across). So a patch enters fine on
+// the right and, as the flow carries it left, it block-spins coarser and coarser until
+// only a few collective cells remain and it slides off under the text — left IS the
+// RG-flow direction. Each coarse cell is an honest box-average / majority threshold of
+// the underlying field; it coarse-grains a SYNTHETIC field BY ANALOGY, never a real
+// network, so there are no concept words and no model name.
+//
+// Calm by construction: one slow constant drift (a panel-width every ~15s), no
+// ignite-and-decay, no flashing, no labels but a single neutral readout. The opaque
+// content cards crop the left (coarsest) panels for free.
+//
+// Theme-adaptive: cool-blue domain fills on near-black in the dark "real" view; ruled
+// graphite domain walls + pencil hatching on cream in the notebook view (never solid
+// fills — that reads as graph-paper). Paused offscreen; reduced-motion draws one
+// settled frame; cleans up its RAF/observers under Astro navigation.
+---
+
+<canvas class="rg-staircase" aria-hidden="true"></canvas>
+
+<style>
+  .rg-staircase {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    pointer-events: none; /* purely ambient — scroll / clicks pass straight through */
+  }
+</style>
+
+<script>
+  const canvas = document.querySelector<HTMLCanvasElement>("canvas.rg-staircase");
+  const ctx = canvas?.getContext("2d");
+  if (canvas && ctx) {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const TAU = Math.PI * 2;
+
+    // ---- theme colours -----------------------------------------------------
+    type RGB = [number, number, number];
+    const parseRGB = (str: string): RGB => {
+      const s = (str || "").trim();
+      if (s[0] === "#") {
+        let h = s.slice(1);
+        if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+        const n = parseInt(h, 16);
+        return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+      }
+      const m = s.match(/-?\d+(?:\.\d+)?/g);
+      if (m && m.length >= 3) return [+m[0], +m[1], +m[2]];
+      return [128, 128, 128];
+    };
+    let accent: RGB = [77, 155, 230];
+    let ink: RGB = [233, 237, 243];
+    let light = false;
+    const lum = (c: RGB) => (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
+    const readColours = () => {
+      const cs = getComputedStyle(document.documentElement);
+      accent = parseRGB(cs.getPropertyValue("--accent"));
+      ink = parseRGB(cs.getPropertyValue("--text-primary"));
+      light = lum(parseRGB(cs.getPropertyValue("--bg"))) > 0.5;
+    };
+    readColours();
+    const rgba = (c: RGB, a: number) =>
+      `rgba(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])},${a})`;
+
+    // ---- deterministic RNG (stable scene; varies a little per load) ---------
+    let seed = (performance.now() % 100000) + 1024;
+    const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+
+    // ---- the synthetic field -----------------------------------------------
+    // A sum of a few LOW-FREQUENCY cosine modes over a continuous "world" (measured
+    // in panel units), so smooth domains span several panels and stay coherent as
+    // they flow. Sampled per cell and thresholded at 0 → the ±1 spins that get
+    // coarse-grained. No drift term is needed: the leftward flow is the motion.
+    const USCALE = 0.16, VSCALE = 0.17; // domain wavelength ≈ a few panels
+    const NMODES = 6;
+    type Mode = { kx: number; ky: number; phx: number; phy: number; amp: number };
+    let modes: Mode[] = [];
+    const buildModes = () => {
+      modes = [];
+      for (let m = 0; m < NMODES; m++) {
+        const kx = 1 + Math.floor(rnd() * 3);
+        const ky = 1 + Math.floor(rnd() * 3);
+        modes.push({
+          kx, ky,
+          phx: rnd() * TAU,
+          phy: rnd() * TAU,
+          amp: (0.7 + 0.7 * rnd()) / (kx + ky), // low frequencies dominate
+        });
+      }
+    };
+    buildModes();
+    const sampleField = (u: number, v: number) => {
+      let val = 0;
+      for (let m = 0; m < NMODES; m++) {
+        const md = modes[m];
+        val += md.amp * Math.cos(TAU * md.kx * u * USCALE + md.phx) *
+                        Math.cos(TAU * md.ky * v * VSCALE + md.phy);
+      }
+      return val;
+    };
+
+    // resolution by HORIZONTAL screen position: finest on the right, coarsening
+    // leftward in discrete RG steps. (Cap finest at 16 — keeps cells legible + cheap.)
+    const resForX = (cx: number) => {
+      const f = cx / Math.max(1, W); // 0 = left (coarse) … 1 = right (fine)
+      if (f >= 0.74) return 16;
+      if (f >= 0.50) return 8;
+      if (f >= 0.26) return 4;
+      return 2;
+    };
+
+    // per-panel scratch (max res 16 → 256 cells), reused so there is no per-frame GC
+    const signBuf = new Int8Array(16 * 16);
+    const strBuf = new Float32Array(16 * 16);
+
+    // ---- geometry ----------------------------------------------------------
+    let W = 1, H = 1, dpr = 1;
+    let side = 150, gap = 18, spacing = 168, rows = 1, startY = 0;
+    let v = 11; // leftward drift, px/sec (set from spacing)
+
+    const layout = () => {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      W = canvas.clientWidth; H = canvas.clientHeight;
+      canvas.width = Math.max(1, Math.round(W * dpr));
+      canvas.height = Math.max(1, Math.round(H * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      side = Math.round(Math.min(W / 7.5, H / 4.2));
+      side = Math.max(118, Math.min(side, 205));
+      gap = Math.round(side * 0.13);
+      spacing = side + gap;
+      v = spacing / 15; // a panel-width every ~15s — slow
+      rows = Math.ceil(H / spacing) + 1;
+      startY = Math.round((H - rows * spacing) / 2); // centre the vertical tiling
+    };
+
+    // ---- drawing -----------------------------------------------------------
+    const drawPanel = (px: number, py: number, res: number, wi: number, jrow: number) => {
+      const cp = side / res;
+      // sample the field over this panel's world cell, threshold to spins
+      for (let a = 0; a < res; a++) {
+        const u = wi + (a + 0.5) / res;
+        for (let b = 0; b < res; b++) {
+          const phi = sampleField(u, jrow + (b + 0.5) / res);
+          const ci = a * res + b;
+          signBuf[ci] = phi >= 0 ? 1 : -1;
+          strBuf[ci] = Math.max(0.35, Math.min(1, Math.abs(phi) * 1.9)); // visibility floor
+        }
+      }
+
+      if (!light) {
+        // DARK: cool-blue domain fills (+1) over faint ink (−1) → figure / ground.
+        for (let a = 0; a < res; a++) {
+          for (let b = 0; b < res; b++) {
+            const ci = a * res + b;
+            const up = signBuf[ci] > 0;
+            const s = strBuf[ci];
+            ctx.fillStyle = rgba(up ? accent : ink, up ? 0.10 + 0.32 * s : 0.03 + 0.05 * s);
+            ctx.fillRect(px + a * cp, py + b * cp, Math.ceil(cp), Math.ceil(cp));
+          }
+        }
+      } else {
+        // NOTEBOOK: never flood-fill (reads as graph-paper). Hatch the +1 domains
+        // where cells are big enough, and stroke the domain WALLS crisply.
+        if (cp >= 9) {
+          for (let a = 0; a < res; a++) {
+            for (let b = 0; b < res; b++) {
+              if (signBuf[a * res + b] <= 0) continue;
+              const s = strBuf[a * res + b];
+              const x = px + a * cp, y = py + b * cp;
+              ctx.save();
+              ctx.beginPath(); ctx.rect(x, y, cp, cp); ctx.clip();
+              ctx.strokeStyle = rgba(accent, Math.min(0.55, 0.16 + 0.32 * s));
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              for (let d = -cp; d < cp; d += 4) { ctx.moveTo(x + d, y); ctx.lineTo(x + d + cp, y + cp); }
+              ctx.stroke();
+              ctx.restore();
+            }
+          }
+        }
+        ctx.strokeStyle = rgba(accent, 0.42);
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        for (let a = 0; a < res; a++) {
+          for (let b = 0; b < res; b++) {
+            const sgn = signBuf[a * res + b];
+            if (a + 1 < res && signBuf[(a + 1) * res + b] !== sgn) {
+              const ex = px + (a + 1) * cp;
+              ctx.moveTo(ex, py + b * cp); ctx.lineTo(ex, py + (b + 1) * cp);
+            }
+            if (b + 1 < res && signBuf[a * res + (b + 1)] !== sgn) {
+              const ey = py + (b + 1) * cp;
+              ctx.moveTo(px + a * cp, ey); ctx.lineTo(px + (a + 1) * cp, ey);
+            }
+          }
+        }
+        ctx.stroke();
+      }
+
+      // faint square frame so each panel reads even when it is one uniform domain
+      ctx.strokeStyle = rgba(light ? accent : ink, light ? 0.26 : 0.10);
+      ctx.lineWidth = 1;
+      ctx.strokeRect(px + 0.5, py + 0.5, side - 1, side - 1);
+    };
+
+    const draw = (shift: number) => {
+      ctx.clearRect(0, 0, W, H);
+      // infinite leftward conveyor: positions wrap by `ox`, identities by `step`,
+      // so content flows left forever with no repeat and no seam.
+      const ox = shift % spacing;
+      const step = Math.floor(shift / spacing);
+      const cols = Math.ceil(W / spacing) + 1;
+      for (let i = -1; i <= cols; i++) {
+        const px = i * spacing - ox;
+        if (px + side < 0 || px > W) continue;
+        const res = resForX(px + side / 2);
+        const wi = step + i;
+        for (let j = 0; j < rows; j++) {
+          drawPanel(px, startY + j * spacing, res, wi, j);
+        }
+      }
+      // the only text: a neutral readout, bottom-left, naming the flow direction.
+      ctx.font = '500 11px ui-monospace, SFMono-Regular, Menlo, monospace';
+      ctx.textAlign = "left";
+      ctx.fillStyle = rgba(ink, light ? 0.40 : 0.30);
+      ctx.fillText("coarse  ←  real-space RG flow  ←  fine", 20, H - 20);
+    };
+
+    // ---- lifecycle ---------------------------------------------------------
+    const animated = !reduce.matches;
+    let raf = 0, last = 0, visible = true, start = performance.now();
+
+    const frame = (now: number) => {
+      raf = requestAnimationFrame(frame);
+      if (!visible) return;
+      if (now - last < 33) return; // ~30fps
+      last = now;
+      draw(((now - start) / 1000) * v);
+    };
+
+    const drawStatic = () => { draw(0); }; // one settled frame, no flow
+
+    layout();
+    window.addEventListener("resize", () => { layout(); if (!animated) drawStatic(); });
+
+    let io: IntersectionObserver | null = null;
+    if (animated) {
+      raf = requestAnimationFrame(frame);
+      io = new IntersectionObserver((es) => { visible = es[0].isIntersecting; });
+      io.observe(canvas);
+    } else {
+      drawStatic();
+    }
+
+    const themeObserver = new MutationObserver(() => { readColours(); if (!animated) drawStatic(); });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+    const cleanup = () => {
+      cancelAnimationFrame(raf);
+      io?.disconnect();
+      themeObserver.disconnect();
+      document.removeEventListener("astro:before-swap", cleanup);
+    };
+    document.addEventListener("astro:before-swap", cleanup);
+  }
+</script>

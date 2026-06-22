@@ -491,6 +491,14 @@ h4 {
   color: var(--text-primary);
 }
 
+/* Dark "real" view runs the interior titles a notch larger than the shared
+   scale. In notebook mode the chunky Rock Salt title face already reads big;
+   the clean Fraunces headings of the real view look quieter at the same size,
+   so h1–h3 get more presence here — dark ONLY (notebook + light keep the scale). */
+:root[data-theme="dark"] h1 { font-size: clamp(var(--text-2xl), 5vw, 2.75rem); }
+:root[data-theme="dark"] h2 { font-size: var(--text-2xl); }
+:root[data-theme="dark"] h3 { font-size: var(--text-xl); }
+
 p { line-height: var(--leading-body); }
 p, ul, ol { max-width: var(--measure); }
 

@@ -1,0 +1,104 @@
+---
+// /intro — the gravitational-wave merger intro, full sequence including the handoff:
+// the cream sketch dives through dark space and develops BACK to cream, then the
+// canvas fades to reveal the cream (sketch) BlackHole iframe, and a home preview
+// fades in. The once-ever flag ('gw-intro-seen') is set here.
+import Layout from "../layouts/Layout.astro";
+import GwMerger from "../components/GwMerger.astro";
+import { site } from "../config/site";
+---
+
+<Layout title="Intro">
+  {/* the cream Home black hole (sketch), loaded BARE (?reveal=staged) so the dive lands
+      on the lone sphere; the accretion + stars + sky then stage in on gw:done */}
+  <iframe class="gw-bh" src="/blackhole/index.html?style=sketch&grid=0&perf=bg&reveal=staged" title="" aria-hidden="true" tabindex="-1" scrolling="no"></iframe>
+
+  <GwMerger />
+
+  {/* home preview — fades in after the black hole has rested */}
+  <div class="gw-home" data-gw-home>
+    <div class="gw-island">
+      <p class="eyebrow">{site.eyebrow}</p>
+      <h1>{site.name}</h1>
+      <p class="lead">{site.tagline}</p>
+    </div>
+  </div>
+
+  <div class="gw-ui">
+    <a class="gw-link" href="/">enter site →</a>
+    <button type="button" class="gw-link" data-gw-replay>replay ↻</button>
+  </div>
+</Layout>
+
+<style>
+  :global(body) { background: #efe5cf; }            /* cream behind the iframe before it paints */
+  .gw-bh { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; z-index: 0; }
+  /* GwMerger's canvas (position:fixed, z-index:0) sits later in the DOM → above the iframe;
+     it fades its own opacity to 0 at the reveal, uncovering the iframe. */
+
+  .gw-home {
+    position: fixed; inset: 0; z-index: 5;
+    display: flex; align-items: center; justify-content: flex-start;
+    padding-inline: clamp(var(--space-5), 8vw, var(--space-9));
+    opacity: 0; pointer-events: none;
+  }
+  .gw-home.show { opacity: 1; transition: opacity 800ms var(--ease-standard); pointer-events: auto; }
+  .gw-island {
+    max-width: 32rem;
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    border: var(--hairline) solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-island);
+    padding: var(--space-6);
+    display: flex; flex-direction: column; gap: var(--space-2);
+  }
+
+  .gw-ui {
+    position: fixed; z-index: 10;
+    bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px)); right: var(--space-4);
+    display: flex; align-items: center; gap: var(--space-3);
+  }
+  .gw-link {
+    font-family: var(--font-mono); font-size: var(--text-xs); letter-spacing: var(--tracking-label);
+    color: var(--text-secondary);
+    background: color-mix(in srgb, var(--surface-raised) 88%, transparent);
+    border: var(--hairline) solid var(--border-strong); border-radius: var(--radius-pill);
+    padding: 7px 13px; cursor: pointer; box-shadow: var(--shadow-dock);
+    transition: color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard);
+  }
+  .gw-link:hover { color: var(--text-primary); border-color: var(--accent-line); }
+  .gw-link:focus-visible { outline: none; box-shadow: var(--ring); }
+</style>
+
+<script>
+  import { revealStaged } from "../scripts/bhReveal";
+  const home = document.querySelector("[data-gw-home]");
+  const frame = document.querySelector<HTMLIFrameElement>("iframe.gw-bh");
+  const setLook = (o: Record<string, number>) => {
+    const cw = frame?.contentWindow as any;
+    if (cw && typeof cw.blackHoleSetLook === "function") cw.blackHoleSetLook(o);
+    else cw?.postMessage({ type: "bh:setLook", look: o }, location.origin);
+  };
+  // Perf: pause the BH ray-tracer while it's hidden behind the dive (warm ~2s, then pause
+  // until gw:reveal-soon), and whenever the tab is hidden.
+  const setPaused = (p: boolean) => {
+    const cw = frame?.contentWindow as any;
+    if (cw && typeof cw.blackHoleSetPaused === "function") cw.blackHoleSetPaused(p);
+    else cw?.postMessage({ type: "bh:setPaused", paused: p }, location.origin);
+  };
+  let introHold = true, warmed = false;
+  const sync = () => { if (warmed) setPaused(document.hidden || introHold); };
+  document.addEventListener("visibilitychange", sync);
+  window.addEventListener("gw:reveal-soon", () => { introHold = false; sync(); });
+  window.addEventListener("gw:reset", () => { introHold = true; sync(); });   // replay
+  setTimeout(() => { warmed = true; sync(); }, 2200);
+
+  // On landing: stage the reveal (accretion → stars + sky), then fade the home preview in.
+  window.addEventListener("gw:done", () => {
+    introHold = false; sync();
+    revealStaged(frame, { onDone: () => setTimeout(() => home?.classList.add("show"), 300) });
+  });
+  // Replay: hide the preview and reset the BH to bare so the next dive lands clean.
+  window.addEventListener("gw:reset", () => { home?.classList.remove("show"); setLook({ disk_gain: 0, star_gain: 0, galaxy_gain: 0 }); });
+  document.querySelector("[data-gw-replay]")?.addEventListener("click", () => (window as any).gwReplay?.());
+</script>

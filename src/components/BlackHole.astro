@@ -19,6 +19,7 @@
   scrolling="no"></iframe>
 
 <script>
+  import { revealStaged } from "../scripts/bhReveal";
   const frame = document.querySelector<HTMLIFrameElement>("iframe.bh-bg");
   const wide = window.matchMedia("(min-width: 900px)");
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -33,8 +34,50 @@
   let gridOn = true;
   try { gridOn = (localStorage.getItem("bh-grid") || "on") !== "off"; } catch (e) {}
   gridOn = false;   // disabled: never render the spacetime grid
+  // First-visit Home: the GW intro is playing (gw-intro class set pre-paint). Load the
+  // BH BARE (disk/stars/sky off) so the dive can land on the lone sphere, then stage
+  // them in via window.bhRevealStaged() (called from PageShell on gw:done).
+  const staged = document.documentElement.classList.contains("gw-intro");
   if (frame && frame.dataset.src && wide.matches && !reduce.matches) {
-    frame.src = frame.dataset.src + "?style=" + style + "&grid=" + (gridOn ? "1" : "0");
+    // perf=bg pins a cheap tier + caps DPR (this is a decorative NPR background).
+    frame.src = frame.dataset.src + "?style=" + style + "&grid=" + (gridOn ? "1" : "0") + "&perf=bg" + (staged ? "&reveal=staged" : "");
+  }
+
+  // Staged handoff driver: fade in accretion, then stars + sky; tell the page when done.
+  (window as any).bhRevealStaged = () => revealStaged(frame, {
+    onDone: () => { try { window.dispatchEvent(new CustomEvent("bh:reveal-done")); } catch (e) {} },
+  });
+
+  // ── Perf + replay ────────────────────────────────────────────────────────────
+  // Pause the heavy ray-tracer whenever it can't be seen — (a) off-screen, (b) tab
+  // hidden, or (c) during the intro it's hidden behind the opaque dive canvas (warm
+  // ~2s, then pause until gw:reveal-soon). And reset the BH to BARE on gw:reset so a
+  // (re)played dive lands on the clean sphere. Resume is instant (the RAF stays alive).
+  const setPaused = (p: boolean) => {
+    const w = frame?.contentWindow as any;
+    if (w && typeof w.blackHoleSetPaused === "function") w.blackHoleSetPaused(p);
+    else w?.postMessage({ type: "bh:setPaused", paused: p }, location.origin);
+  };
+  const setLook = (o: Record<string, number>) => {
+    const w = frame?.contentWindow as any;
+    if (w && typeof w.blackHoleSetLook === "function") w.blackHoleSetLook(o);
+    else w?.postMessage({ type: "bh:setLook", look: o }, location.origin);
+  };
+  const resetBare = () => setLook({ disk_gain: 1, disk_reveal_r: -0.1, star_gain: 0, galaxy_gain: 0, spin: 0 });
+  (window as any).bhResetStaged = resetBare;   // used by the Home replay button
+  if (frame && wide.matches && !reduce.matches) {
+    let onScreen = true, introHold = staged, warmed = !staged;
+    const sync = () => { if (warmed) setPaused(!onScreen || document.hidden || introHold); };
+    if ("IntersectionObserver" in window) {
+      new IntersectionObserver((e) => { onScreen = e[0].isIntersecting; sync(); }, { threshold: 0.01 }).observe(frame);
+    }
+    document.addEventListener("visibilitychange", sync);
+    // intro / replay: hold paused (hidden behind the dive), resume just before the crossfade
+    window.addEventListener("gw:reveal-soon", () => { introHold = false; sync(); });
+    window.addEventListener("gw:done", () => { introHold = false; sync(); });
+    window.addEventListener("gw:reset", () => { introHold = true; sync(); resetBare(); });
+    if (staged) setTimeout(() => { warmed = true; sync(); }, 2200);
+    else sync();
   }
 
   // Live style toggle from the parent page (iframe is same-origin).

@@ -136,7 +136,10 @@ vec4 finalize_color(vec4 color) {
 
     mapped += vec3(screen_dither());
     mapped = clamp(mapped, 0.0, 1.0);
-    return vec4(mapped, 1.0);
+    // Preserve alpha (the event-horizon mask from trace_ray). The photoreal canvas
+    // is opaque and bloom/TAA write their own alpha downstream, so this only
+    // survives where it's needed: the notebook 'sketch' pass (renders to sceneRT).
+    return vec4(mapped, color.a);
     {{/cinematic_tonemap}}
     {{^cinematic_tonemap}}
     vec3 mapped = color.rgb + vec3(screen_dither());

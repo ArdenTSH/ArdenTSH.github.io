@@ -1,0 +1,62 @@
+---
+// PsoControls — bottom-right toggle for the materials PSO background. Switches the
+// drifting contour plot between the default "colourless" ink-on-paper look and a
+// filled depth colour map (light green where the landscape is high/shallow → dark
+// blue where it's deep). OFF by default; the choice is remembered in localStorage
+// ("pso-colour") and applied via window.psoSetColour (defined in PsoField).
+// Rendered by PageShell on the materials page only.
+---
+
+<div class="pso-controls">
+  <button type="button" class="pso-btn" data-pso-colour aria-pressed="false">colour</button>
+</div>
+
+<style>
+  .pso-controls {
+    position: fixed;
+    bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+    right: var(--space-4);
+    z-index: var(--z-dock);
+    display: flex;
+    align-items: center;
+    pointer-events: auto;
+  }
+  .pso-btn {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-label);
+    color: var(--text-secondary);
+    background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
+    border: var(--hairline) solid var(--border-strong);
+    border-radius: var(--radius-pill);
+    padding: 7px 13px;
+    box-shadow: var(--shadow-dock);
+    cursor: pointer;
+    transition:
+      color var(--dur-fast) var(--ease-standard),
+      border-color var(--dur-fast) var(--ease-standard);
+  }
+  .pso-btn:hover { color: var(--text-primary); border-color: var(--accent-line); }
+  .pso-btn[aria-pressed="true"] { color: var(--accent); border-color: var(--accent-line); }
+  .pso-btn:focus-visible { outline: none; box-shadow: var(--ring); }
+</style>
+
+<script>
+  const btn = document.querySelector<HTMLButtonElement>("[data-pso-colour]");
+  const get = (): boolean => {
+    try { return localStorage.getItem("pso-colour") === "on"; } catch (e) { return false; }
+  };
+  const apply = (on: boolean) => {
+    if (btn) {
+      btn.setAttribute("aria-pressed", String(on));
+      btn.setAttribute("aria-label", "depth colour map: " + (on ? "on" : "off"));
+    }
+    (window as any).psoSetColour?.(on);
+  };
+  apply(get());
+  btn?.addEventListener("click", () => {
+    const next = !get();
+    try { localStorage.setItem("pso-colour", next ? "on" : "off"); } catch (e) {}
+    apply(next);
+  });
+</script>

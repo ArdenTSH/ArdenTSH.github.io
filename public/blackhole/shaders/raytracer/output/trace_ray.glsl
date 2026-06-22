@@ -958,5 +958,11 @@ vec4 trace_ray(vec3 ray) {
         }
     }
 
-    return color*ray_intensity;
+    // Event-horizon mask carried in alpha (RGB unchanged): rays that fell into the
+    // horizon → 1, everything else → 0. cinematic_tonemap wipes alpha for the
+    // photoreal screen, but the notebook 'sketch' post-pass reads it (via sceneRT)
+    // to ink the shadow dark graphite instead of letting it fade to paper.
+    vec4 traced = color*ray_intensity;
+    traced.a = shadow_capture ? 1.0 : 0.0;
+    return traced;
 }

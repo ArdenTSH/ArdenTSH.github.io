@@ -1,0 +1,85 @@
+---
+// GenesisControls — the display-mode switch for the cosmology cosmic-web
+// background: REDSHIFT (galaxies tinted cool→clay-red by distance) ⇄ STARRY (a
+// normal-glow night sky, no redshift tint). It appears ONLY in dark ("Universe")
+// mode and drives GenesisField via window.genesisSetMode.
+//
+// The choice is remembered in localStorage ("genesis-mode"): switch to the
+// notebook (light) theme and the control hides (the field shows its redshift
+// colours on paper); switch back to dark and it restores your chosen mode.
+// Rendered by PageShell on the cosmology page only.
+---
+
+<button type="button" class="genesis-toggle" data-genesis-mode aria-pressed="false" hidden>
+  <span data-genesis-label>redshift</span>
+</button>
+
+<style>
+  .genesis-toggle {
+    position: fixed;
+    bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+    right: var(--space-4);
+    z-index: var(--z-dock);
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-label);
+    color: var(--text-secondary);
+    background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
+    border: var(--hairline) solid var(--border-strong);
+    border-radius: var(--radius-pill);
+    padding: 7px 13px;
+    box-shadow: var(--shadow-dock);
+    cursor: pointer;
+    transition:
+      color var(--dur-fast) var(--ease-standard),
+      border-color var(--dur-fast) var(--ease-standard);
+  }
+  .genesis-toggle[hidden] { display: none; }
+  .gm-prefix { color: var(--text-secondary); opacity: 0.7; }
+  .genesis-toggle [data-genesis-label] { color: var(--accent); }
+  .genesis-toggle:hover {
+    color: var(--text-primary);
+    border-color: var(--accent-line);
+  }
+  .genesis-toggle:focus-visible {
+    outline: none;
+    box-shadow: var(--ring);
+  }
+</style>
+
+<script>
+  const btn = document.querySelector<HTMLButtonElement>(".genesis-toggle");
+  const label = document.querySelector<HTMLElement>("[data-genesis-label]");
+  if (btn) {
+    const getMode = () => {
+      try { return localStorage.getItem("genesis-mode") === "starry" ? "starry" : "redshift"; }
+      catch (e) { return "redshift"; }
+    };
+    const isDark = () => document.documentElement.getAttribute("data-theme") === "dark";
+    const render = (m: string) => {
+      btn.setAttribute("aria-pressed", String(m === "starry"));
+      if (label) label.textContent = m;
+    };
+    // The switch only exists in dark mode; when shown, reflect the saved choice.
+    const syncVisible = () => {
+      btn.hidden = !isDark();
+      if (isDark()) render(getMode());
+    };
+    render(getMode());
+    syncVisible();
+
+    btn.addEventListener("click", () => {
+      const next = getMode() === "starry" ? "redshift" : "starry";
+      try { localStorage.setItem("genesis-mode", next); } catch (e) {}
+      render(next);
+      (window as any).genesisSetMode?.(next);
+    });
+
+    const obs = new MutationObserver(syncVisible);
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    document.addEventListener("astro:before-swap", () => obs.disconnect());
+  }
+</script>

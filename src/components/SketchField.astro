@@ -1,0 +1,272 @@
+---
+// SketchField — background for the Writing page: a person on a chair, head down,
+// holding a sketch-board + pencil (a 3/4 BACK view), drawn as a ROUGH PROPORTION
+// BLOCK-IN from math primitives (circles for head/joints/knees, ellipses for
+// back/pelvis/feet, lines for limbs/chair/board). The construction-shape stage of
+// a gesture drawing — no face, no hair, mitten hands — so "rough sketch" and "made
+// of math" are the same thing. Hand-drawn "searching line" wobble (seeded → identical every load).
+//
+// STATUS: rebuilt from the LEFT of Arden's three reference attempts. Every anchor
+// in `draw()` is a labelled point, so tuning to the sketch is just nudging numbers.
+// Visual likeness is judged on screen (localhost → /writing). See the auto-memory
+// note `writing-page-sketch-bg`.
+//
+// Static (drawn once; redraws on resize + theme change) — so it is its own
+// reduced-motion fallback and carries no animation loop. Theme-adaptive; removing
+// it just drops the Writing background, nothing else.
+---
+
+<canvas class="sketch-field" aria-hidden="true"></canvas>
+
+<style>
+  .sketch-field {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+</style>
+
+<script>
+  const canvas = document.querySelector<HTMLCanvasElement>("canvas.sketch-field");
+  const ctx = canvas?.getContext("2d");
+  if (canvas && ctx) {
+    let ink = "#2b2b31", accent = "#7a5224";
+    const readColours = () => {
+      const cs = getComputedStyle(document.documentElement);
+      ink = (cs.getPropertyValue("--text-primary") || ink).trim();
+      accent = (cs.getPropertyValue("--accent") || accent).trim();
+    };
+    readColours();
+
+    let W = 1, H = 1, dpr = 1;
+    const resize = () => {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      W = canvas.clientWidth; H = canvas.clientHeight;
+      canvas.width = Math.max(1, Math.round(W * dpr));
+      canvas.height = Math.max(1, Math.round(H * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      draw();
+    };
+
+    // seeded RNG — reset at the top of every draw() so the wobble is IDENTICAL each
+    // render (the sketch never reshuffles on resize / theme flip).
+    const SEED0 = 73119;
+    let seed = SEED0;
+    const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+    const jit = (amp: number) => (rnd() - 0.5) * amp;
+
+    // ---- placement (all easy knobs) -----------------------------------------
+    // The figure lives in a local box (x right, y down); PIVOT is its floor-centre.
+    // On wide screens the island column pins LEFT, so we sit in the open RIGHT
+    // gutter and face LEFT (dir = -1), toward the text.
+    let curZ = 0, curShell = 0;   // yaw depth: curZ = constant depth (held props); curShell = ±1 body-cylinder shell (front/back). 0 = flat.
+    const BOX = { pivX: 150, pivY: 408 };
+    const BODY_R = 44;                 // body/head "cylinder" radius — surface features this far off-centre swing most when turned
+    const YAW = -25 * Math.PI / 180;   // figure turned ~25° to look toward screen-left (not square to the screen)
+    const place = () => {
+      const s = Math.min(Math.max(Math.min((0.46 * W) / 300, (0.66 * H) / 430), 0.5), 1.7);
+      const cx = 0.68 * W, floor = 0.88 * H, dir = 1;        // dir flips L/R; +1 keeps the held board toward the content (screen-left)
+      // YAW (orthographic, about the body centreline): a point's depth = curZ (constant, for held props)
+      // + curShell·√(R²−u²) (its place on the body cylinder). Turning maps horizontal offset u to
+      // u·cos(YAW)+depth·sin(YAW), so centre-line SURFACE features (spine, face cross) swing most while
+      // the silhouette barely moves — exactly how a turning cylinder/sphere reads.
+      const cY = Math.cos(YAW), sY = Math.sin(YAW);
+      const P = (lx: number, ly: number): [number, number] => {
+        const u = lx - BOX.pivX, z = curZ + curShell * Math.sqrt(Math.max(0, BODY_R * BODY_R - u * u));
+        return [cx + dir * s * (u * cY + z * sY), floor + s * (ly - BOX.pivY)];
+      };
+      return { s, dir, P };
+    };
+
+    type Opt = { a?: number; w?: number; c?: string; passes?: number; jit?: number };
+    let s = 1, dir = -1, P: (lx: number, ly: number) => [number, number] = (x, y) => [x, y];
+    const set = (o: Opt) => { ctx.strokeStyle = o.c || ink; ctx.globalAlpha = o.a ?? 0.3; ctx.lineWidth = o.w ?? 1.3; };
+
+    // a sketched polyline through local points, with per-vertex perpendicular jitter
+    // and optional repeat passes (the overlapping "searching" stroke).
+    const line = (ptsL: [number, number][], o: Opt) => {
+      set(o);
+      const pts = ptsL.map(([x, y]) => P(x, y));
+      for (let pass = 0; pass < (o.passes ?? 1); pass++) {
+        ctx.beginPath();
+        for (let g = 0; g < pts.length - 1; g++) {
+          const [ax, ay] = pts[g], [bx, by] = pts[g + 1];
+          const len = Math.hypot(bx - ax, by - ay) || 1;
+          const n = Math.max(2, Math.round(len / 16));
+          const nx = -(by - ay) / len, ny = (bx - ax) / len;     // unit perpendicular
+          for (let i = g === 0 ? 0 : 1; i <= n; i++) {
+            const t = i / n, j = jit(o.jit ?? 2.2);
+            const x = ax + (bx - ax) * t + nx * j, y = ay + (by - ay) * t + ny * j;
+            g === 0 && i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+          }
+        }
+        ctx.stroke();
+      }
+    };
+
+    // a wobbly, slightly over-closed ellipse (hand-drawn loop). rxL/ryL/rot in local.
+    const ell = (cL: [number, number], rxL: number, ryL: number, rot: number, o: Opt) => {
+      set(o);
+      const [cx, cy] = P(cL[0], cL[1]);
+      const rx = rxL * s, ry = ryL * s, r = (dir < 0 ? -1 : 1) * rot;
+      const cr = Math.cos(r), sr = Math.sin(r);
+      for (let pass = 0; pass < (o.passes ?? 1); pass++) {
+        ctx.beginPath();
+        const a0 = -0.18 * Math.PI + jit(0.12), a1 = 2 * Math.PI + 0.14 * Math.PI, steps = 42;
+        for (let i = 0; i <= steps; i++) {
+          const a = a0 + (a1 - a0) * (i / steps), k = 1 + jit(o.jit ?? 0.05);
+          const ex = Math.cos(a) * rx * k, ey = Math.sin(a) * ry * k;
+          const x = cx + ex * cr - ey * sr, y = cy + ex * sr + ey * cr;
+          i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+    };
+    const dot = (cL: [number, number], rL: number, o: Opt) => ell(cL, rL, rL, 0, { ...o, jit: 0.14 });
+
+    // ---- volume helpers (the 3D upgrade) ------------------------------------
+    const midpt = (a: [number, number], b: [number, number]): [number, number] => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    const unit = (a: [number, number], b: [number, number]): [number, number] => { const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1; return [dx / L, dy / L]; };
+    // smooth wobbly curve through points (midpoint quadratic) — organic outlines + cross-contours.
+    const curveQ = (ptsL: [number, number][], o: Opt) => {
+      set(o);
+      const pts = ptsL.map(([x, y]) => P(x, y));
+      for (let pass = 0; pass < (o.passes ?? 1); pass++) {
+        const j = o.jit ?? 1.4, q = pts.map(([x, y]) => [x + jit(j), y + jit(j)] as [number, number]);
+        ctx.beginPath();
+        ctx.moveTo(q[0][0], q[0][1]);
+        for (let i = 1; i < q.length - 1; i++) {
+          const mx = (q[i][0] + q[i + 1][0]) / 2, my = (q[i][1] + q[i + 1][1]) / 2;
+          ctx.quadraticCurveTo(q[i][0], q[i][1], mx, my);
+        }
+        ctx.lineTo(q[q.length - 1][0], q[q.length - 1][1]);
+        ctx.stroke();
+      }
+    };
+    // tapered cylinder = a 3D limb: two side contours offset perpendicular in LOCAL space
+    // (radius ra at a → rb at b). Pair with a ball circle at each joint (mannequin look).
+    const tube = (a: [number, number], ra: number, b: [number, number], rb: number, o: Opt) => {
+      const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1, px = -dy / L, py = dx / L;
+      line([[a[0] + px * ra, a[1] + py * ra], [b[0] + px * rb, b[1] + py * rb]], o);
+      line([[a[0] - px * ra, a[1] - py * ra], [b[0] - px * rb, b[1] - py * rb]], o);
+    };
+    // a cross-contour: a shallow arc wrapping a form, bowing `bow` along `axis` — the
+    // strongest "this is round / 3D" line-art cue.
+    const wrap = (c: [number, number], halfW: number, axis: [number, number], bow: number, o: Opt) => {
+      const perp: [number, number] = [-axis[1], axis[0]];
+      curveQ([
+        [c[0] - perp[0] * halfW, c[1] - perp[1] * halfW],
+        [c[0] + axis[0] * bow, c[1] + axis[1] * bow],
+        [c[0] + perp[0] * halfW, c[1] + perp[1] * halfW],
+      ], o);
+    };
+
+    const draw = () => {
+      seed = SEED0;
+      ctx.clearRect(0, 0, W, H);
+      ctx.lineCap = "round"; ctx.lineJoin = "round";
+      ({ s, dir, P } = place());
+
+      // 3/4 BACK view, turned ~25° (see YAW): a VOLUME block-in — tapered-tube limbs, a ribcage-barrel
+      // + a separate pelvis-bucket, an egg-and-jaw head with wrapping cross-contours. Head down, both
+      // arms forward to a sketch-board over the lap. Only the joints are circles. curZ tags set depth.
+
+      // shared joint anchors (tube ends + ball circles) -----------------------
+      const shL: [number, number] = [108, 140], shR: [number, number] = [192, 140];
+      const elL: [number, number] = [90, 202], elR: [number, number] = [210, 206];
+      const haL: [number, number] = [122, 256], haR: [number, number] = [168, 260];
+      const hpL: [number, number] = [132, 280], hpR: [number, number] = [170, 282];
+      const knL: [number, number] = [126, 344], knR: [number, number] = [176, 346];   // longer legs: knees lowered
+      const anL: [number, number] = [122, 398], anR: [number, number] = [180, 398];   // ankles near the floor
+
+      // ---- chair (behind everything; depth −30) ----
+      curZ = -30;
+      const chair: Opt = { a: 0.16, w: 1.2, jit: 2.2 };
+      line([[96, 150], [204, 150]], chair);                                        // back top rail
+      line([[96, 150], [92, 302]], chair); line([[204, 150], [208, 304]], chair);  // back uprights
+      line([[88, 304], [206, 306], [216, 324], [80, 320], [88, 304]], chair);      // seat (quad in perspective)
+      line([[96, 320], [90, 406]], chair); line([[206, 322], [214, 406]], chair);  // front legs
+      curZ = 0;
+
+      // ---- legs: longer tapered tubes + knee balls + toeless shoes ----
+      const leg: Opt = { a: 0.32, w: 1.4, jit: 1.6 };
+      tube(hpL, 18, knL, 13, leg); tube(knL, 13, anL, 9, leg);                     // L thigh + shin
+      tube(hpR, 18, knR, 13, leg); tube(knR, 13, anR, 9, leg);                     // R thigh + shin
+      wrap(midpt(hpL, knL), 16, unit(hpL, knL), 7, { a: 0.2, w: 1.0, jit: 0.6 });  // L thigh cross-contour
+      wrap(midpt(hpR, knR), 16, unit(hpR, knR), 7, { a: 0.2, w: 1.0, jit: 0.6 });  // R thigh cross-contour
+      wrap(midpt(knL, anL), 11, unit(knL, anL), 5, { a: 0.18, w: 1.0, jit: 0.6 }); // L shin cross-contour
+      wrap(midpt(knR, anR), 11, unit(knR, anR), 5, { a: 0.18, w: 1.0, jit: 0.6 }); // R shin cross-contour
+      dot(knL, 12, { a: 0.34, w: 1.3 }); dot(knR, 12, { a: 0.34, w: 1.3 });        // knee balls
+      curveQ([[114, 392], [108, 402], [112, 410], [142, 409], [146, 399], [132, 390], [114, 392]], { a: 0.32, w: 1.3, jit: 0.8 }); // L shoe (foot, no toes)
+      curveQ([[172, 390], [166, 399], [170, 410], [200, 409], [204, 402], [192, 392], [172, 390]], { a: 0.32, w: 1.3, jit: 0.8 }); // R shoe (foot, no toes)
+
+      // ---- pelvis (bucket) — its own shape, below the waist ----
+      const tors: Opt = { a: 0.32, w: 1.4, jit: 1.2 };
+      curveQ([[126, 250], [150, 246], [174, 250], [182, 276], [168, 298], [150, 303], [132, 298], [118, 276], [126, 250]], tors); // pelvis bucket
+      curShell = 1; wrap([150, 276], 26, [0, 1], 7, { a: 0.2, w: 1.0, jit: 0.7 }); curShell = 0; // pelvis front cross-contour
+
+      // ---- ribcage (barrel) — a DIFFERENT shape from the pelvis, narrowing to the waist ----
+      curveQ([[114, 140], [150, 132], [186, 140], [190, 182], [176, 226], [150, 240], [124, 226], [110, 182], [114, 140]], tors); // ribcage barrel
+      line([[124, 226], [128, 250]], { a: 0.24, w: 1.2, jit: 1.0 });               // waist oblique L
+      line([[176, 226], [172, 250]], { a: 0.24, w: 1.2, jit: 1.0 });               // waist oblique R
+      curShell = -1; curveQ([[150, 138], [151, 188], [150, 238]], { a: 0.18, w: 1.0, jit: 0.8 }); curShell = 0; // spine (back of cylinder → swings the other way)
+      curShell = 1; wrap([150, 184], 37, [0, 1], 9, { a: 0.2, w: 1.0, jit: 0.8 }); curShell = 0;  // ribcage front cross-contour
+
+      // ---- shoulder yoke + balls ----
+      curveQ([[108, 140], [150, 128], [192, 140]], { a: 0.3, w: 1.3, jit: 1.1 });
+      dot(shL, 14, { a: 0.34, w: 1.3 }); dot(shR, 14, { a: 0.34, w: 1.3 });
+
+      // ---- head: egg cranium + jaw, then the face turns (cross at +depth → looks ~25° left) ----
+      const head: Opt = { a: 0.34, w: 1.5, jit: 0.9 };
+      curveQ([[150, 30], [180, 40], [192, 72], [184, 104], [166, 122], [150, 125], [134, 120], [118, 98], [112, 64], [124, 40], [150, 30]], head); // cranium + jaw (not an ellipse)
+      curShell = 1;
+      curveQ([[150, 34], [156, 78], [158, 122]], { a: 0.22, w: 1.0, jit: 0.7 });   // face centreline (front of head-sphere → swings left)
+      curveQ([[118, 80], [150, 88], [182, 78]], { a: 0.22, w: 1.0, jit: 0.7 });    // brow line
+      curShell = 0;
+      tube([150, 120], 9, [150, 142], 12, { a: 0.3, w: 1.3, jit: 0.9 });           // short neck onto the shoulders
+
+      // ---- arms (held forward → +depth) + elbow balls ----
+      curZ = 14;
+      const arm: Opt = { a: 0.34, w: 1.4, jit: 1.4 };
+      tube(shL, 15, elL, 11, arm); tube(elL, 11, haL, 8, arm);                     // L upper + fore
+      tube(shR, 15, elR, 11, arm); tube(elR, 11, haR, 8, arm);                     // R upper + fore
+      wrap(midpt(shL, elL), 13, unit(shL, elL), 6, { a: 0.2, w: 1.0, jit: 0.6 });  // L arm cross-contour
+      wrap(midpt(shR, elR), 13, unit(shR, elR), 6, { a: 0.2, w: 1.0, jit: 0.6 });  // R arm cross-contour
+      dot(elL, 10, { a: 0.32, w: 1.2 }); dot(elR, 10, { a: 0.32, w: 1.2 });        // elbow balls
+      curZ = 0;
+
+      // ---- board + hands + paper + pencil (held in front → +depth) ----
+      curZ = 20;
+      const board: Opt = { a: 0.3, w: 1.3, jit: 1.1 };
+      curveQ([[114, 250], [110, 264], [126, 268], [132, 256], [126, 248], [114, 250]], { a: 0.32, w: 1.3, jit: 0.8 }); // L mitten
+      curveQ([[160, 254], [156, 268], [172, 270], [178, 258], [172, 250], [160, 254]], { a: 0.32, w: 1.3, jit: 0.8 }); // R mitten
+      line([[68, 248], [126, 236], [138, 300], [80, 312], [68, 248]], board);      // board face (quad)
+      line([[126, 236], [130, 230], [142, 292], [138, 300]], { a: 0.22, w: 1.1, jit: 0.9 }); // board edge (thickness → 3D)
+      line([[82, 260], [128, 250]], { a: 0.18, w: 1.0, jit: 0.9 });                // paper line
+      line([[85, 276], [131, 266]], { a: 0.18, w: 1.0, jit: 0.9 });                // paper line
+      line([[168, 258], [120, 272]], { a: 0.55, w: 1.7, c: accent, jit: 0.8 });    // pencil
+      curZ = 0;
+
+      // ---- hip joint balls (on top) ----
+      dot(hpL, 7, { a: 0.3, w: 1.1 }); dot(hpR, 7, { a: 0.3, w: 1.1 });
+
+      ctx.globalAlpha = 1;
+    };
+
+    resize();
+    window.addEventListener("resize", resize);
+    // repaint with the new ink/accent when the theme flips.
+    const themeObserver = new MutationObserver(() => { readColours(); draw(); });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+    // tidy up under Astro client navigation — no leaked listeners on a detached canvas.
+    const cleanup = () => {
+      window.removeEventListener("resize", resize);
+      themeObserver.disconnect();
+      document.removeEventListener("astro:before-swap", cleanup);
+    };
+    document.addEventListener("astro:before-swap", cleanup);
+  }
+</script>

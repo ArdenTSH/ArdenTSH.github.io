@@ -11,6 +11,9 @@ import LensGrid from "../components/LensGrid.astro";
 import GridToggle from "../components/GridToggle.astro";
 import ColliderControls from "../components/ColliderControls.astro";
 import NeutrinoControls from "../components/NeutrinoControls.astro";
+import GwMerger from "../components/GwMerger.astro";
+import GenesisControls from "../components/GenesisControls.astro";
+import PsoControls from "../components/PsoControls.astro";
 
 interface Props {
   title: string;
@@ -22,6 +25,22 @@ const { title, description, active = "" } = Astro.props;
 
 <Layout title={title} description={description}>
   <a class="skip-link" href="#main">Skip to content</a>
+
+  {/* GW merger intro — once-ever on Home, pre-paint gate. First visit (desktop,
+      motion ok): keep the cream (notebook) Home so the dive lands back on it, and
+      hide the page chrome until the intro is done. Otherwise: skip entirely. */}
+  {active === "home" && (
+    <script is:inline>
+      (function () {
+        try {
+          var seen = localStorage.getItem("gw-intro-seen");
+          var ok = matchMedia("(min-width: 900px)").matches && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+          if (seen || !ok) { document.documentElement.classList.add("gw-off"); }
+          else { document.documentElement.classList.add("gw-intro"); }
+        } catch (e) { document.documentElement.classList.add("gw-off"); }
+      })();
+    </script>
+  )}
 
   {/* Full-bleed background slot — pages inject their scene here (Phase 3). */}
   <div class="bg-layer" aria-hidden="true"><slot name="background" /></div>
@@ -56,9 +75,77 @@ const { title, description, active = "" } = Astro.props;
   {active === "cv" && <ColliderControls />}
   {/* Neutrino colour-coding control: research/neutrino only. */}
   {active === "neutrino" && <NeutrinoControls />}
+  {/* Starry-mode toggle: cosmology only; the control self-hides outside dark mode. */}
+  {active === "cosmology" && <GenesisControls />}
+  {/* Depth colour-map toggle: research/materials only (PSO contour background). */}
+  {active === "materials" && <PsoControls />}
+  {/* GW merger intro overlay (home only; GwMerger self-skips when the gate set .gw-off). */}
+  {active === "home" && <GwMerger />}
+  {/* Replay the intro — bottom-right; fades in with the chrome (hidden while the dive plays). */}
+  {active === "home" && (
+    <button class="gw-replay" type="button" data-gw-replay aria-label="Replay the intro">replay ↻</button>
+  )}
+  {active === "home" && (
+    <script>
+      // When the dive lands on the bare black hole, stage the reveal: accretion fades
+      // in, then the stars + sky, then (on bh:reveal-done) the page islands fade in.
+      const revealIslands = () => document.documentElement.classList.remove("gw-intro");
+      window.addEventListener("bh:reveal-done", revealIslands);
+      window.addEventListener("gw:done", () => {
+        try { localStorage.setItem("gw-intro-seen", "1"); } catch (e) {}
+        const reveal = (window as any).bhRevealStaged;
+        if (typeof reveal === "function") {
+          reveal();
+          setTimeout(revealIslands, 6000);   // safety net if the WebGL handoff stalls
+        } else {
+          setTimeout(revealIslands, 900);
+        }
+      });
+      // Replay: re-arm the intro — show the dive, hide the chrome, and play again. GwMerger's
+      // gw:reset (fired by play()) tells BlackHole.astro to reset the BH to bare for the landing.
+      document.querySelector("[data-gw-replay]")?.addEventListener("click", () => {
+        document.documentElement.classList.remove("gw-off");
+        document.documentElement.classList.add("gw-intro");
+        (window as any).gwReplay?.();
+      });
+    </script>
+  )}
 </Layout>
 
 <style>
+  /* While the GW intro plays (home, first visit), hide the page chrome over the
+     cream sketch background; remove .gw-intro on completion and it all fades in. */
+  :global(:root.gw-intro .page),
+  :global(:root.gw-intro .page-spine),
+  :global(:root.gw-intro .dock),
+  :global(:root.gw-intro .mode-toggle),
+  :global(:root.gw-intro .gw-replay) { opacity: 0 !important; pointer-events: none !important; }
+  :global(.page), :global(.dock), :global(.mode-toggle) { transition: opacity 800ms var(--ease-standard); }
+
+  /* Replay-the-intro button — bottom-right, matches the dock/toggle chrome. */
+  .gw-replay {
+    position: fixed;
+    z-index: var(--z-dock);
+    bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+    right: var(--space-4);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-label);
+    color: var(--text-secondary);
+    background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
+    border: var(--hairline) solid var(--border-strong);
+    border-radius: var(--radius-pill);
+    padding: 7px 13px;
+    cursor: pointer;
+    box-shadow: var(--shadow-dock);
+    transition:
+      color var(--dur-fast) var(--ease-standard),
+      border-color var(--dur-fast) var(--ease-standard),
+      opacity 800ms var(--ease-standard);
+  }
+  .gw-replay:hover { color: var(--text-primary); border-color: var(--accent-line); }
+  .gw-replay:focus-visible { outline: none; box-shadow: var(--ring); }
+
   .bg-layer {
     position: fixed;
     inset: 0;

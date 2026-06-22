@@ -70,6 +70,18 @@ float accretion_emissivity(float radius, float angle, float t) {
     return accretion_turbulence(radius, angle, t) * edge_fade;
 }
 
+// Inside-out reveal mask for the GW intro: the disk is drawn only out to disk_reveal_r
+// (normalised radius), with a bright "draw front" riding the leading edge so it reads as
+// being inked outward. disk_reveal_r ramps 0 (hidden) -> ~1.12 (full, front boost gone).
+// Applied to the flux profile below so it masks the disk BRIGHTNESS on every branch.
+float disk_reveal_mask(float radius) {
+    float r_norm = (radius - ACCRETION_MIN_R) / ACCRETION_WIDTH;
+    float reveal = 1.0 - smoothstep(disk_reveal_r, disk_reveal_r + 0.06, r_norm);
+    float front  = smoothstep(disk_reveal_r - 0.12, disk_reveal_r, r_norm) * reveal
+                 * (1.0 - smoothstep(1.0, 1.08, disk_reveal_r));
+    return reveal * (1.0 + 1.6 * front);
+}
+
 // --- Disk Self-Irradiation (Returning Radiation) ---
 // Heuristic Cunningham-inspired inner-disk brightening. This is NOT a
 // ray-traced returning-radiation calculation or a tabulated Cunningham transfer
@@ -95,8 +107,9 @@ float accretion_flux_profile(float radius) {
     float x = max(radius / ACCRETION_MIN_R, 1.0001);
     float inner_edge = max(1.0 - sqrt(1.0 / x), 0.0);
     float flux = inner_edge / (x*x*x);
-    // Multiply by returning radiation enhancement to capture self-irradiation heating
-    return flux * 18.0 * accretion_returning_radiation_enhancement(radius);
+    // Multiply by returning radiation enhancement to capture self-irradiation heating,
+    // and by the inside-out reveal mask (GW intro draws the disk in from the centre).
+    return flux * 18.0 * accretion_returning_radiation_enhancement(radius) * disk_reveal_mask(radius);
 }
 
 float accretion_temperature(float radius) {

@@ -62,7 +62,7 @@
     // "topology" splits shower vs track, "plain" is the theme-aware intensity look.
     const MIP = 0, HIP = 1, SHOWER = 2, DELTA = 3, MICHEL = 4;
     const TYPE_COL = ["#22d3ee", "#3b82f6", "#43c66f", "#eab308", "#f97316"]; // MIP cyan · HIP blue · shower green · delta yellow · Michel orange
-    let colourMode = "plain";
+    let colourMode = "type";   // colour-by-particle is the default
     try { const v = localStorage.getItem("nu-colour"); if (v === "plain" || v === "type" || v === "topology") colourMode = v; } catch (e) {}
     const segColour = (m: number, dense: boolean) => {
       if (colourMode === "type") return TYPE_COL[m] || TYPE_COL[0];

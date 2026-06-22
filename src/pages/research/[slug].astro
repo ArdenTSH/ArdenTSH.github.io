@@ -2,16 +2,37 @@
 // Research direction page. One file serves all four areas via a dynamic route.
 // The header (label + blurb) comes from src/config/site.ts; the BODY is the
 // Markdown write-up in src/content/research/<slug>.md — edit that file to change
-// what shows here (plain Markdown: paragraphs, ## subheadings, links, lists).
+// what shows here.
+//
+// ISLAND SKELETON (Phase: content restructure). The single Markdown body is
+// split into a COLUMN OF ISLANDS by its headings, so each page reads as a stack
+// of opaque cards instead of one long blob:
+//   • text before the first heading  → an intro island (the page opener)
+//   • "## Heading"                    → a section-lead island (title + a 2-line standfirst)
+//   • "### Heading"                   → a part island (why / problem / method / results / …)
+// Authoring stays in ONE Markdown file per page; the convention is just which
+// heading level you reach for. The split + Markdown render happen here at build.
 import PageShell from "../../layouts/PageShell.astro";
 import Island from "../../components/Island.astro";
 import PsoField from "../../components/PsoField.astro";
 import NeutrinoField from "../../components/NeutrinoField.astro";
 import GenesisField from "../../components/GenesisField.astro";
-import SAEField from "../../components/SAEField.astro";
+// AI-safety background: the RG coarse-graining staircase replaces the old SAEField.
+// SAEField.astro is kept in the repo (unused) so it's a one-line swap to restore.
+import RgStaircase from "../../components/RgStaircase.astro";
 import { Icon } from "astro-icon/components";
-import { getCollection, render } from "astro:content";
+import { getCollection } from "astro:content";
 import { researchAreas } from "../../config/site";
+
+// Markdown → HTML for each split block. Uses the remark/rehype pipeline that
+// ships with Astro (GFM + smart punctuation), so fragments read like the rest
+// of the site. No new dependency, no per-fragment Astro render needed.
+import { unified } from "unified";
+import remarkParse from "remark-parse";
+import remarkGfm from "remark-gfm";
+import remarkSmartypants from "remark-smartypants";
+import remarkRehype from "remark-rehype";
+import rehypeStringify from "rehype-stringify";
 
 export async function getStaticPaths() {
   const entries = await getCollection("research");
@@ -22,8 +43,42 @@ export async function getStaticPaths() {
 }
 
 const { area, entry } = Astro.props;
-const rendered = entry ? await render(entry) : null;
-const Content = rendered?.Content;
+
+const md = unified()
+  .use(remarkParse)
+  .use(remarkGfm)
+  .use(remarkSmartypants)
+  .use(remarkRehype, { allowDangerousHtml: true })
+  .use(rehypeStringify, { allowDangerousHtml: true });
+const toHtml = async (src: string) => String(await md.process(src));
+
+// Split the raw body into heading-delimited blocks. `level` is 0 (preamble),
+// 2 (## section-lead) or 3 (### part); each block becomes one island.
+interface Block { level: number; lines: string[]; }
+const raw = (entry?.body ?? "").replace(/<!--[\s\S]*?-->/g, "").trim();
+const blocks: Block[] = [];
+let cur: Block | null = null;
+for (const line of raw.split("\n")) {
+  const m = /^(#{2,3})\s+/.exec(line);
+  if (m) {
+    if (cur) blocks.push(cur);
+    cur = { level: m[1].length, lines: [line] };
+  } else {
+    if (!cur) cur = { level: 0, lines: [] };
+    cur.lines.push(line);
+  }
+}
+if (cur) blocks.push(cur);
+
+const islands = await Promise.all(
+  blocks
+    .filter((b) => b.lines.join("").trim().length > 0)
+    .map(async (b) => ({
+      cls:
+        b.level === 2 ? "research-section" : b.level === 3 ? "research-part" : "research-intro",
+      html: await toHtml(b.lines.join("\n")),
+    })),
+);
 ---
 
 <PageShell title={area.label} active={area.slug}>
@@ -32,8 +87,9 @@ const Content = rendered?.Content;
   {area.slug === "neutrino" && <NeutrinoField slot="background" />}
   {/* Cosmology: a slowly turning cosmic web, galaxies tinted by redshift. */}
   {area.slug === "cosmology" && <GenesisField slot="background" />}
-  {/* AI safety: a sparse autoencoder firing monosemantic features over a stream. */}
-  {area.slug === "ai" && <SAEField slot="background" />}
+  {/* AI safety: a real-space RG coarse-graining staircase — many microscopic
+      degrees of freedom on the left collapse into a few collective ones on the right. */}
+  {area.slug === "ai" && <RgStaircase slot="background" />}
   <Island as="header">
     <a href="/" class="back-link">
       <Icon name="tabler:arrow-left" aria-hidden="true" /> Back to home
@@ -43,15 +99,19 @@ const Content = rendered?.Content;
     <p class="lead">{area.blurb}</p>
   </Island>
 
-  <Island class="prose">
-    {
-      Content ? (
-        <Content />
-      ) : (
+  {
+    islands.length > 0 ? (
+      islands.map((b) => (
+        <Island>
+          <div class={b.cls} set:html={b.html} />
+        </Island>
+      ))
+    ) : (
+      <Island>
         <p class="text-secondary">Write-up coming soon.</p>
-      )
-    }
-  </Island>
+      </Island>
+    )
+  }
 </PageShell>
 
 <style>
@@ -65,4 +125,54 @@ const Content = rendered?.Content;
   }
   .back-link:hover { color: var(--accent); }
   .back-link :global(svg) { width: 16px; height: 16px; }
+
+  /* ── Per-block island content (rendered Markdown — styled via :global) ──────
+     The block classes carry the scope; :global() reaches the rendered HTML. */
+
+  /* Intro island — the page opener, set as a calm lead. */
+  .research-intro :global(p) {
+    font-size: var(--text-md);
+    color: var(--text-secondary);
+    line-height: var(--leading-snug);
+    max-width: var(--measure);
+  }
+  .research-intro :global(p + p),
+  .research-intro :global(strong) { color: var(--text-primary); }
+
+  /* Section-lead island — a section title + a two-line standfirst. */
+  .research-section :global(h2) { margin-bottom: var(--space-3); }
+  .research-section :global(p) {
+    font-size: var(--text-md);
+    color: var(--text-secondary);
+    line-height: var(--leading-snug);
+    max-width: var(--measure);
+  }
+  .research-section :global(p + p) { margin-top: var(--space-3); }
+  .research-section :global(strong) { color: var(--text-primary); }
+
+  /* Part island — a sub-heading + body prose (why / problem / method / …). */
+  .research-part :global(h3) { margin-bottom: var(--space-3); }
+  .research-part :global(h4) {
+    margin-top: var(--space-5);
+    font-size: var(--text-md);
+    font-weight: var(--weight-medium);
+  }
+  .research-part :global(p) { margin-top: var(--space-3); }
+  .research-part :global(p:first-child) { margin-top: 0; }
+  .research-part :global(ul) {
+    margin-top: var(--space-3);
+    padding-left: 1.15rem;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .research-part :global(li) {
+    color: var(--text-secondary);
+    line-height: var(--leading-snug);
+    max-width: var(--measure);
+  }
+  .research-part :global(li)::marker { color: var(--text-faint); }
+  .research-part :global(strong) { color: var(--text-primary); }
+  /* Placeholder equation / data blocks read as the mono "instrument" voice. */
+  .research-part :global(pre) { margin-top: var(--space-4); }
 </style>

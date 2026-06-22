@@ -57,9 +57,11 @@
     loadTexture('stars',  'assets/img/stars.png',       THREE.LinearFilter);
 
     // ── GLSL shard loading ───────────────────────────────────────────────────────
-    // Fetch all shards in parallel then concatenate in declaration order.
+    // Fetch all shards in parallel then concatenate in declaration order. Bust the
+    // browser cache on shader edits (the shards are plain $.get'd, so otherwise sticky).
+    var SHADER_VERSION = '20260622-disk-reveal';
     var shardRequests = SHADER_SHARDS.map(function(path) {
-        return $.get(path);
+        return $.get(path + '?v=' + SHADER_VERSION);
     });
 
     $.when.apply($, shardRequests).done(function() {

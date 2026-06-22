@@ -3,9 +3,12 @@
 // background, posts open in place later.
 import PageShell from "../layouts/PageShell.astro";
 import Island from "../components/Island.astro";
+import SketchField from "../components/SketchField.astro";
 ---
 
 <PageShell title="Writing" active="writing">
+  {/* Rough proportion block-in of a writer at a desk, drawn from math primitives. */}
+  <SketchField slot="background" />
   <Island as="header">
     <p class="eyebrow">Essays & notes</p>
     <h1>Writing</h1>

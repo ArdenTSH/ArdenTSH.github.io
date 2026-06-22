@@ -9,7 +9,7 @@
 ---
 
 <div class="nu-controls">
-  <button type="button" class="nu-btn" data-nu-mode aria-pressed="false">plain</button>
+  <button type="button" class="nu-btn" data-nu-mode aria-pressed="true">type</button>
 </div>
 
 <style>
@@ -47,7 +47,7 @@
   const MODES = ["plain", "type", "topology"] as const;
   type M = typeof MODES[number];
   const get = (): M => {
-    try { const v = localStorage.getItem("nu-colour"); return (MODES as readonly string[]).includes(v ?? "") ? (v as M) : "plain"; } catch (e) { return "plain"; }
+    try { const v = localStorage.getItem("nu-colour"); return (MODES as readonly string[]).includes(v ?? "") ? (v as M) : "type"; } catch (e) { return "type"; }
   };
   const apply = (m: M) => {
     if (btn) {

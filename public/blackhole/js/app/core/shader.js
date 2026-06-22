@@ -72,6 +72,7 @@ function Shader(mustacheTemplate) {
             tonemap_mode: 1,
             exposure: 1.0,
             disk_gain: 1.0,
+            disk_reveal_r: 1.12,   // inside-out reveal radius (>=1.1 = fully drawn); the GW intro ramps this 0->1.12
             glow: 0.0,
             doppler_boost: 1.0,
             aberration_strength: 1.0,
