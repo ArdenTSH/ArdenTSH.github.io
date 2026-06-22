@@ -19,7 +19,7 @@
   scrolling="no"></iframe>
 
 <script>
-  import { revealStaged } from "../scripts/bhReveal";
+  import { zoomIntro } from "../scripts/bhReveal";
   const frame = document.querySelector<HTMLIFrameElement>("iframe.bh-bg");
   const wide = window.matchMedia("(min-width: 900px)");
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -33,20 +33,15 @@
   // here and restoring the GridToggle render in PageShell.astro.
   let gridOn = true;
   try { gridOn = (localStorage.getItem("bh-grid") || "on") !== "off"; } catch (e) {}
-  gridOn = false;   // disabled: never render the spacetime grid
-  // First-visit Home: the GW intro is playing (gw-intro class set pre-paint). Load the
-  // BH BARE (disk/stars/sky off) so the dive can land on the lone sphere, then stage
-  // them in via window.bhRevealStaged() (called from PageShell on gw:done).
+  gridOn = true;    // ENABLED: the lensed graph-paper sky-grid is the GW dive's spacetime metric
+  // First-visit Home: the GW intro is playing (gw-intro class set pre-paint). Load the BH in
+  // ZOOM mode (disk ON, spin 0, far/small) so the merger explosion uncovers it and the camera
+  // flies in (zoomIntro on gw:explode) with the accretion present — no 2D→3D transition.
   const staged = document.documentElement.classList.contains("gw-intro");
   if (frame && frame.dataset.src && wide.matches && !reduce.matches) {
     // perf=bg pins a cheap tier + caps DPR (this is a decorative NPR background).
-    frame.src = frame.dataset.src + "?style=" + style + "&grid=" + (gridOn ? "1" : "0") + "&perf=bg" + (staged ? "&reveal=staged" : "");
+    frame.src = frame.dataset.src + "?style=" + style + "&grid=" + (gridOn ? "1" : "0") + "&perf=bg" + (staged ? "&reveal=zoom" : "");
   }
-
-  // Staged handoff driver: fade in accretion, then stars + sky; tell the page when done.
-  (window as any).bhRevealStaged = () => revealStaged(frame, {
-    onDone: () => { try { window.dispatchEvent(new CustomEvent("bh:reveal-done")); } catch (e) {} },
-  });
 
   // ── Perf + replay ────────────────────────────────────────────────────────────
   // Pause the heavy ray-tracer whenever it can't be seen — (a) off-screen, (b) tab
@@ -63,8 +58,10 @@
     if (w && typeof w.blackHoleSetLook === "function") w.blackHoleSetLook(o);
     else w?.postMessage({ type: "bh:setLook", look: o }, location.origin);
   };
-  const resetBare = () => setLook({ disk_gain: 1, disk_reveal_r: -0.1, star_gain: 0, galaxy_gain: 0, spin: 0 });
-  (window as any).bhResetStaged = resetBare;   // used by the Home replay button
+  // Zoom-start state: disk ON (full), spin 0 (centred circle), no stars, FAR (small BH) — what
+  // the explosion uncovers and the camera flies in from. Used on gw:reset (first play + replay).
+  const resetZoomStart = () => setLook({ disk_gain: 1, disk_reveal_r: 1.12, star_gain: 0, galaxy_gain: 0, spin: 0, distance: 28 });
+  (window as any).bhResetStaged = resetZoomStart;   // used by the Home replay button
   if (frame && wide.matches && !reduce.matches) {
     let onScreen = true, introHold = staged, warmed = !staged;
     const sync = () => { if (warmed) setPaused(!onScreen || document.hidden || introHold); };
@@ -72,10 +69,15 @@
       new IntersectionObserver((e) => { onScreen = e[0].isIntersecting; sync(); }, { threshold: 0.01 }).observe(frame);
     }
     document.addEventListener("visibilitychange", sync);
-    // intro / replay: hold paused (hidden behind the dive), resume just before the crossfade
+    // intro / replay: hold paused (hidden behind the dive), resume before the explosion reveal;
+    // on gw:explode fly the camera in (disk present), then tell the page the islands can fade in.
     window.addEventListener("gw:reveal-soon", () => { introHold = false; sync(); });
     window.addEventListener("gw:done", () => { introHold = false; sync(); });
-    window.addEventListener("gw:reset", () => { introHold = true; sync(); resetBare(); });
+    window.addEventListener("gw:reset", () => { introHold = true; sync(); resetZoomStart(); });
+    window.addEventListener("gw:explode", () => {
+      introHold = false; sync();
+      zoomIntro(frame, { onDone: () => { try { window.dispatchEvent(new CustomEvent("bh:reveal-done")); } catch (e) {} } });
+    });
     if (staged) setTimeout(() => { warmed = true; sync(); }, 2200);
     else sync();
   }

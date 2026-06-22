@@ -87,19 +87,13 @@ const { title, description, active = "" } = Astro.props;
   )}
   {active === "home" && (
     <script>
-      // When the dive lands on the bare black hole, stage the reveal: accretion fades
-      // in, then the stars + sky, then (on bh:reveal-done) the page islands fade in.
+      // The merger explosion uncovers the real 3D black hole; the camera flies in (BlackHole's
+      // gw:explode → zoomIntro) and fires bh:reveal-done when it lands → the islands fade in.
       const revealIslands = () => document.documentElement.classList.remove("gw-intro");
       window.addEventListener("bh:reveal-done", revealIslands);
       window.addEventListener("gw:done", () => {
         try { localStorage.setItem("gw-intro-seen", "1"); } catch (e) {}
-        const reveal = (window as any).bhRevealStaged;
-        if (typeof reveal === "function") {
-          reveal();
-          setTimeout(revealIslands, 6000);   // safety net if the WebGL handoff stalls
-        } else {
-          setTimeout(revealIslands, 900);
-        }
+        setTimeout(revealIslands, 7000);   // safety net if the WebGL zoom stalls / never lands
       });
       // Replay: re-arm the intro — show the dive, hide the chrome, and play again. GwMerger's
       // gw:reset (fired by play()) tells BlackHole.astro to reset the BH to bare for the landing.

@@ -11,7 +11,7 @@ import { site } from "../config/site";
 <Layout title="Intro">
   {/* the cream Home black hole (sketch), loaded BARE (?reveal=staged) so the dive lands
       on the lone sphere; the accretion + stars + sky then stage in on gw:done */}
-  <iframe class="gw-bh" src="/blackhole/index.html?style=sketch&grid=0&perf=bg&reveal=staged" title="" aria-hidden="true" tabindex="-1" scrolling="no"></iframe>
+  <iframe class="gw-bh" src="/blackhole/index.html?style=sketch&grid=1&perf=bg&reveal=zoom" title="" aria-hidden="true" tabindex="-1" scrolling="no"></iframe>
 
   <GwMerger />
 
@@ -71,7 +71,7 @@ import { site } from "../config/site";
 </style>
 
 <script>
-  import { revealStaged } from "../scripts/bhReveal";
+  import { zoomIntro } from "../scripts/bhReveal";
   const home = document.querySelector("[data-gw-home]");
   const frame = document.querySelector<HTMLIFrameElement>("iframe.gw-bh");
   const setLook = (o: Record<string, number>) => {
@@ -86,19 +86,18 @@ import { site } from "../config/site";
     if (cw && typeof cw.blackHoleSetPaused === "function") cw.blackHoleSetPaused(p);
     else cw?.postMessage({ type: "bh:setPaused", paused: p }, location.origin);
   };
+  const resetZoomStart = () => setLook({ disk_gain: 1, disk_reveal_r: 1.12, star_gain: 0, galaxy_gain: 0, spin: 0, distance: 28 });
   let introHold = true, warmed = false;
   const sync = () => { if (warmed) setPaused(document.hidden || introHold); };
   document.addEventListener("visibilitychange", sync);
   window.addEventListener("gw:reveal-soon", () => { introHold = false; sync(); });
-  window.addEventListener("gw:reset", () => { introHold = true; sync(); });   // replay
+  window.addEventListener("gw:reset", () => { introHold = true; sync(); home?.classList.remove("show"); resetZoomStart(); });   // (re)play
   setTimeout(() => { warmed = true; sync(); }, 2200);
 
-  // On landing: stage the reveal (accretion → stars + sky), then fade the home preview in.
-  window.addEventListener("gw:done", () => {
+  // The explosion uncovers the real 3D BH+disk; fly the camera in, then fade the home preview in.
+  window.addEventListener("gw:explode", () => {
     introHold = false; sync();
-    revealStaged(frame, { onDone: () => setTimeout(() => home?.classList.add("show"), 300) });
+    zoomIntro(frame, { onDone: () => setTimeout(() => home?.classList.add("show"), 300) });
   });
-  // Replay: hide the preview and reset the BH to bare so the next dive lands clean.
-  window.addEventListener("gw:reset", () => { home?.classList.remove("show"); setLook({ disk_gain: 0, star_gain: 0, galaxy_gain: 0 }); });
   document.querySelector("[data-gw-replay]")?.addEventListener("click", () => (window as any).gwReplay?.());
 </script>

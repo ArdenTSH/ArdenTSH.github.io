@@ -1358,12 +1358,32 @@ function init(glslSource, textures) {
         // the reveal ramps it back to the default 0.9 so the BH "spins up" into the real
         // Kerr shadow (shifts + goes asymmetric) — the resting Home BH is left unchanged.
         if (typeof o.spin === 'number')        { shader.parameters.black_hole.spin = o.spin; uniforms.bh_spin.value = o.spin; }
+        // CAMERA path for the GW intro dive (real 3D BH+disk, disk present the whole way):
+        //  - distance: large = far/small BH, ~11 = Home framing (zoom / fall-in).
+        //  - azimuth + polar: orbit + descent (top-down → grazing) — the old dive trajectory.
+        // The orbit camera looks at the BH (target = origin), so we set its direction by angle
+        // (radius is arbitrary — observer.distance sets the apparent size) then mirror to the
+        // observer so the ray-tracer flies along the path.
+        if (typeof o.azimuth === 'number' && typeof o.polar === 'number' && typeof camera !== 'undefined' && cameraControls) {
+            var _sp = Math.sin(o.polar);
+            camera.position.set(10 * _sp * Math.sin(o.azimuth), 10 * Math.cos(o.polar), 10 * _sp * Math.cos(o.azimuth));
+            cameraControls.target.set(0, 0, 0);
+            cameraControls.update();
+        }
+        if (typeof o.distance === 'number') shader.parameters.observer.distance = o.distance;
+        if (typeof updateCamera === 'function' &&
+            (typeof o.distance === 'number' || typeof o.polar === 'number' || typeof o.azimuth === 'number')) {
+            updateCamera();   // recompute observer.position/orientation for the new view
+        }
         shader.needsUpdate = true; // force a redraw so the change shows immediately
     }
     window.blackHoleSetLook = setLook;
     try {
         var revealFromUrl = new URLSearchParams(window.location.search).get('reveal');
+        // staged = land on a BARE sphere then stage in (old flow). zoom = disk ON + spin 0 +
+        // FAR (small BH) so the explosion reveals it and the camera flies in (new flow).
         if (revealFromUrl === 'staged') setLook({ disk_gain: 1.0, disk_reveal_r: -0.1, star_gain: 0.0, galaxy_gain: 0.0, spin: 0.0 });
+        else if (revealFromUrl === 'zoom') setLook({ disk_gain: 1.0, disk_reveal_r: 1.12, star_gain: 0.0, galaxy_gain: 0.0, spin: 0.0, distance: 28, polar: 0.30, azimuth: -1.5 });
     } catch (e) {}
 
     // ===== Background perf: window.blackHoleSetPaused(true/false) lets the parent stop the

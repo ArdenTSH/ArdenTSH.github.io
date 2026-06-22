@@ -30,8 +30,12 @@
     const readColours = () => {};   // the SKETCH is always the cream notebook palette (theme-independent); the dive transitions to DARKBG
 
     // ---- timeline (ms) -----------------------------------------------------------
-    const T = 10000;
-    const P_I = 0.06, P_M = 0.29, P_DIVE = 0.38;  // inspiral-start / merger / dive-start; the dive is long & slow
+    // The 2D sketch now ONLY does inspiral → merger → explosion → fade; the explosion
+    // uncovers the real 3D black hole (WebGL iframe, ?reveal=zoom) and the camera flies
+    // in from there with the accretion disk present (no 2D dive / no calm handoff).
+    // tI/tM kept at 600/2900ms (same chirp pacing); T shortened so it ends after the fade.
+    const T = 4500;
+    const P_I = 600 / T, P_M = 2900 / T, P_DIVE = 0.38;  // P_DIVE kept only for the (now dead) render3D defs
     const tI = P_I * T, tM = P_M * T;
     const STEP = 1000 / 12;                        // stop-motion cadence (12 fps) for the sketch
     // ---- physics knobs (art-directed magnitudes, faithful FORM) ------------------
@@ -322,21 +326,21 @@
       const fade = Math.max(0, 1 - prog);
       ctx.lineCap = "round"; ctx.lineJoin = "round";
       for (let pass = 0; pass < 2; pass++) {                        // the spiky star, varied spike lengths, gone over twice
-        ctx.globalAlpha = (0.9 - 0.3 * pass) * fade; ctx.strokeStyle = wave; ctx.lineWidth = (2.6 - pass) * (minWH / 900);
+        ctx.globalAlpha = (0.9 - 0.3 * pass) * fade; ctx.strokeStyle = wave; ctx.lineWidth = (3.4 - pass) * (minWH / 900);
         ctx.beginPath();
-        const spikes = 13;
+        const spikes = 20;
         for (let i = 0; i <= spikes * 2; i++) {
           const t = (i / (spikes * 2)) * TAU, out = i % 2 === 0;
           const base = out ? rad * (0.7 + Math.abs(hash(seed + i, i)) * 1.0) : rad * 0.4;
-          const rj = base * (0.45 + prog);
+          const rj = base * (0.5 + prog);
           const x = px + Math.cos(t) * rj, y = py + Math.sin(t) * rj;
           i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
         }
         ctx.closePath(); ctx.stroke();
       }
-      ctx.globalAlpha = 0.85 * fade; ctx.lineWidth = 2 * (minWH / 900);   // zig-zag lightning bolts shooting out
-      for (let b = 0; b < 6; b++) {
-        const a = (b / 6) * TAU + hash(seed + b, b) * 0.5, len = rad * (1.1 + Math.abs(hash(seed + b * 7, b)) * 0.8) * (0.5 + prog);
+      ctx.globalAlpha = 0.85 * fade; ctx.lineWidth = 2.5 * (minWH / 900);   // zig-zag lightning bolts shooting out
+      for (let b = 0; b < 11; b++) {
+        const a = (b / 11) * TAU + hash(seed + b, b) * 0.5, len = rad * (1.1 + Math.abs(hash(seed + b * 7, b)) * 0.8) * (0.5 + prog);
         ctx.beginPath(); ctx.moveTo(px + Math.cos(a) * rad * 0.5, py + Math.sin(a) * rad * 0.5);
         for (let s = 1; s <= 3; s++) {
           const rr2 = rad * 0.5 + (len - rad * 0.5) * s / 3, off = (s % 2 ? 1 : -1) * rad * 0.13 * (1 + hash(seed + b + s, s));
@@ -345,7 +349,7 @@
         ctx.stroke();
       }
       ctx.globalAlpha = 0.7 * fade * prog;                         // little debris bits flung outward (tiny curved marks)
-      for (let d = 0; d < 9; d++) {
+      for (let d = 0; d < 18; d++) {
         const a = hash(seed + d * 3, d) * TAU, dist = rad * (1.1 + Math.abs(hash(seed + d, d)) * 0.9) * prog;
         ctx.beginPath(); ctx.arc(px + Math.cos(a) * dist, py + Math.sin(a) * dist, rad * 0.1, a, a + 2.3); ctx.stroke();
       }
@@ -392,35 +396,31 @@
     const ease = (t: number) => 1 - Math.pow(1 - t, 3);
     const render = (t: number) => {
       const p = t / T;
-      if (p >= P_DIVE) { render3D(t, p); return; }                  // the dive is a 3D orbiting fall-in (separate path)
-      const stop = true;
       const eT = Math.floor(t / STEP) * STEP;                       // stop-motion through the sketch
-      const seed = Math.floor((stop ? t : 0) / STEP);              // boil seed (frozen during the smooth dive)
+      const seed = Math.floor(t / STEP);                            // boil seed
       const cl = (a: number, b: number) => Math.min(1, Math.max(0, (p - a) / (b - a)));
 
-      // the 3D dive: cream → dark space, the grid recedes & dissolves into a starfield,
-      // and the camera zooms into the remnant until it's the Home black hole's size.
-      const darken = cl(0.63, 0.80), gridA = 1 - cl(0.66, 0.83), starA = cl(0.68, 0.90);
-      let Z = 1;
-      if (p >= P_DIVE) {
-        const remW = baseR * 1.6 * Math.cbrt(mTot), zEnd = (FINAL_R * minWH) / remW;
-        Z = 1 + (zEnd - 1) * ease(cl(P_DIVE, 0.93));
-      }
+      // The metric grid fades through the merger; the explosion then uncovers the real 3D
+      // black hole (WebGL iframe behind, ?reveal=zoom) and the camera flies in — disk present.
+      const gridA = 1 - ease(cl(P_M - 0.06, P_M + 0.12));
+      // KEY: the cream + grid fade PER-ELEMENT (creamA), NOT the whole canvas — so the opaque
+      // explosion (drawn after, at its own full alpha) stays on top of the revealing BH and
+      // actually masks the cut, instead of fading out together with it.
+      const creamA = 1 - ease(cl(0.70, 0.86));
 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
-      if (darken > 0) { ctx.globalAlpha = darken; ctx.fillStyle = DARKBG; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
-      if (starA > 0) drawStars(starA);                              // far starfield behind everything
+      ctx.clearRect(0, 0, W, H);
+      ctx.globalAlpha = creamA; ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
       ctx.save();
-      ctx.translate(cx, cy); ctx.scale(Z, Z);                       // world origin = screen centre
+      ctx.translate(cx, cy);                                        // world origin = screen centre
 
       const bod = bodies(eT);
-      // (1) the metric: dots displaced by curvature wells + GW strain (fades out into the starfield on the dive)
+      // (1) the metric: dots displaced by curvature wells + GW strain
       const fadeIn = Math.min(1, t / 220);                          // grid eases in quickly, early
       if (gridA > 0.01) for (let i = 0; i < N; i++) {
         strain(i, eT);
         let dx = STR.dx, dy = STR.dy;
-        // curvature wells: STEEP & DENSE near each black hole — the grid dives in
+        // curvature wells: STEEP & DENSE near each black hole
         for (const b of bod) {
           const ex = x0[i] - b[0], ey = y0[i] - b[1], d2 = ex * ex + ey * ey, bw2 = b[2] * b[2] * 13;
           const g = Math.min(0.82, 1.3 * bw2 / (d2 + bw2 * 0.22));
@@ -431,36 +431,37 @@
         for (const b of bod) { const ex = wx - b[0], ey = wy - b[1]; if (ex * ex + ey * ey < b[2] * b[2] * 0.92) { hidden = true; break; } }
         if (hidden) continue;
         const m = STR.m;
-        ctx.globalAlpha = (0.45 + Math.min(0.55, m * 6)) * fadeIn * gridA;
+        ctx.globalAlpha = (0.45 + Math.min(0.55, m * 6)) * fadeIn * gridA * creamA;
         ctx.fillStyle = m > 0.04 ? wave : dotRest;
-        const s = (1.0 + Math.min(1.9, m * 13)) / Z;                // strained dots bolden; ~constant px through the zoom
+        const s = 1.0 + Math.min(1.9, m * 13);
         ctx.fillRect(wx - s / 2, wy - s / 2, s, s);
       }
       ctx.globalAlpha = 1;
 
       // (2a) the two trailing GW spiral arms (the drawn layer)
       drawSpirals(eT, seed);
-
-      // black holes: hand-drawn dark blobs, no rim (boiling)
+      // black holes: hand-drawn dark blobs (two inspiralling, then the merged remnant)
       for (const b of bod) handBlob(b[0], b[1], b[2], hole, seed * 7 + (b[0] | 0));
-
-      // (2b) the merger explosion — a comic POW: spiky star + bolts + flung debris
+      // (2b) the merger explosion — a comic POW: spiky star + bolts + flung debris (masks the cut)
       const burst = (eT - tM);
-      if (burst >= -STEP && burst < 460) {
-        const prog = Math.max(0, Math.min(1, burst / 460));
-        explosion(0, 0, baseR * 4.8 * Math.cbrt(mTot), prog, seed * 13);
+      if (burst >= -STEP && burst < 850) {                          // bigger + longer so it covers the whole 2D→3D fade
+        const prog = Math.max(0, Math.min(1, burst / 850));
+        explosion(0, 0, baseR * 9 * Math.cbrt(mTot), prog, seed * 13);
       }
       ctx.restore();
 
-      // reveal: fade the whole sketch canvas out over the dark, star-filled frame, uncovering
-      // the real photoreal black-hole iframe behind it (texture + rotation + accretion).
-      canvas.style.opacity = String(1 - ease(cl(0.88, 0.99)));
-      if (p >= P_DIVE && !diving) { diving = true; try { window.dispatchEvent(new CustomEvent("gw:diving")); } catch (e) {} }
+      // The cream/grid already cross-dissolved to the WebGL (creamA, per-element) UNDER the
+      // opaque explosion. This whole-canvas fade runs LATER — only to clear the residual 2D
+      // remnant blob after the explosion is spent (~p0.83), black-blob → black WebGL-BH, seamless.
+      // gw:reveal-soon un-pauses the iframe; gw:explode flies it in.
+      canvas.style.opacity = String(1 - ease(cl(0.83, 0.93)));
+      if (p >= 0.50 && !revealSoonFired) { revealSoonFired = true; try { window.dispatchEvent(new CustomEvent("gw:reveal-soon")); } catch (e) {} }
+      if (p >= 0.62 && !explodeFired) { explodeFired = true; try { window.dispatchEvent(new CustomEvent("gw:explode")); } catch (e) {} }
       if (p >= 0.985 && !doneFired) { doneFired = true; try { window.dispatchEvent(new CustomEvent("gw:done")); } catch (e) {} }
     };
 
     // ---- lifecycle ---------------------------------------------------------------
-    let t = 0, last = 0, raf = 0, playing = false, diving = false, doneFired = false, revealSoonFired = false;
+    let t = 0, last = 0, raf = 0, playing = false, diving = false, doneFired = false, revealSoonFired = false, explodeFired = false;
     const frame = (now: number) => {
       const dt = Math.min(now - last, 50); last = now;
       t += dt;
@@ -468,7 +469,7 @@
       render(t);
       raf = requestAnimationFrame(frame);
     };
-    const play = () => { if (playing) return; playing = true; diving = false; doneFired = false; revealSoonFired = false; canvas.style.opacity = "1"; try { window.dispatchEvent(new CustomEvent("gw:reset")); } catch (e) {} t = 0; last = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(frame); };
+    const play = () => { if (playing) return; playing = true; diving = false; doneFired = false; revealSoonFired = false; explodeFired = false; canvas.style.opacity = "1"; try { window.dispatchEvent(new CustomEvent("gw:reset")); } catch (e) {} t = 0; last = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(frame); };
     const staticFrame = () => render(tM + 2 * TAU_RD);
 
     resize();
