@@ -17,11 +17,12 @@ KCL, Experimental Particle and Astroparticle group (EPAP) · London, UK · Oct 2
 
 - Co-authored *Physics at the Edge: benchmarking quantisation techniques and the Edge TPU for neutrino interaction recognition* ([arXiv:2603.24607](https://arxiv.org/abs/2603.24607), awaiting submission to EPJC).
 - Presented a poster at the AI for Science Conference, Alan Turing Institute, March 2026.
-- Architecting ground-up, lightweight, symmetry-preserving models for edge-AI topology classification.
+- Running reconstruction and clustering with Pandora in LArSoft; writing ROOT feature-vector (set) files as inputs for the group's set-transformer models. Developing proficiency in C++, LArSoft, and ROOT.
+- Contributing to interpretability work on set-transformer models.
 - Trained and quantised CNNs (PTQ & QAT) on GENIE-generated LArTPC neutrino datasets to support low-latency, sustainable fast triggers. Supervised by Dr Stefano Vergani (Postdoctoral Research Associate).
 
 ### Photovoltaics undergraduate research assistant
-KCL, Functional Materials & Devices Laboratory · London, UK · Sep 2025 – present
+KCL, Functional Materials & Devices Laboratory · London, UK · Sep 2025 – Jun 2026
 
 - Integrated CAD (Fusion 360, Inkscape) with a V4.75 CO₂ laser to nanostructure perovskite for spectral filtering.
 - Investigated dichroic filters and perovskite for agrivoltaics. Supervised by Dr Jay Patel (Functional Photonics Lecturer).
