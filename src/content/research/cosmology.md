@@ -21,4 +21,10 @@ sky also leave one we could one day hear?
 - Inflationary correlators and the symmetries that constrain their shape.
 - Mapping cosmological-collider features onto the induced gravitational-wave spectrum.
 
+## Data side
+
+The observational muscle gets exercised too: at the KCL Cosmology Hackathon
+(June 2026) I built an ML pipeline inferring galaxy redshifts from 5-band SDSS
+photometry — gradient-boosted trees with an MLP ensemble, RMSE ≈ 0.052.
+
 <!-- Selected outputs (talks, notes, papers) attach here as they appear. -->

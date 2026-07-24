@@ -68,7 +68,7 @@ best structures are benchmarked against established references (GAP-20, AIRSS).
 
 ### Results
 
-[3D structure viewer slot — C₂₀ as the hero; flip through the C₃–C₁₀ isomers]
+[3D structure viewer slot — C₂₀ as the hero; flip through the C₃–C₂₀ isomers]
 
 The headline is C₂₀. It is a genuinely hard target: the cage, bowl, and
 monocyclic-ring isomers sit within a razor-thin energy window, and which one
@@ -82,6 +82,17 @@ numbers actually support.]
 morphing from a random blob into the cage]
 
 [benchmark plot slot — our energies against GAP-20 / AIRSS]
+
+### Where it's heading
+
+A manuscript on this work is in preparation, targeted for submission at the end
+of July 2026. Beyond the paper, the machinery generalises: I'm extending the
+swarm search to **oxygen and sulfur polymers**, automating kinetic-state
+discovery with PySoftK, and starting interpretability work on **random-forest
+feature attribution** — asking the surrogate models not just to rank
+structures, but to say *why*. The astrophysical thread continues too: comparing
+simulated IR spectra of the recovered clusters against molecular-cloud
+observations.
 
 ### Resources
 

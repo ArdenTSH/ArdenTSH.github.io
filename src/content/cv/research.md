@@ -7,18 +7,21 @@ order: 2
 KCL, De Tomas Group · London, UK · Dec 2025 – present
 
 - Awarded the EPSRC-funded CCP5 (Condensed Matter Simulation Project) bursary for a full-time summer extension.
-- Developed and characterised a hybrid PSO–DFT (GFN2-xTB / PBE+VV10) workflow for carbon-nanocluster structure prediction; benchmarked inertias, recovered C₃–C₁₀ isomers and converged a C₂₀ cage (a fullerene precursor).
+- Developed and characterised a hybrid PSO–DFT (GFN2-xTB / PBE+VV10) workflow for carbon-nanocluster structure prediction; benchmarked inertias, recovered C₃–C₂₀ isomers and converged a C₂₀ fullerene.
 - Built HPC pipelines in Bash for GPU-accelerated optimiser tuning; authored READMEs for reproducibility.
+- Co-authoring a manuscript on this work; submission targeted for end of July 2026.
 - Curated benchmark datasets to validate against GAP-20 / AIRSS, bridging *ab initio* accuracy with ML-IP scalability.
-- Extending the work to compare simulated IR spectra against astrophysical molecular-cloud observations. Supervised by Dr Carla De Tomas (Senior Lecturer in Net Zero).
+- Extending the work to compare simulated IR spectra against astrophysical molecular-cloud observations.
+- Extending PSO to oxygen/sulfur polymers and initiating interpretability work on random-forest feature attribution; automated kinetic-state discovery via PySoftK. Supervised by Dr Carla De Tomas (Senior Lecturer in Net Zero).
 
 ### Particle physics & machine learning research assistant
 KCL, Experimental Particle and Astroparticle group (EPAP) · London, UK · Oct 2025 – present
 
-- Co-authored *Physics at the Edge: benchmarking quantisation techniques and the Edge TPU for neutrino interaction recognition* ([arXiv:2603.24607](https://arxiv.org/abs/2603.24607), awaiting submission to EPJC).
+- Co-authored *Physics at the Edge: benchmarking quantisation techniques and the Edge TPU for neutrino interaction recognition* ([arXiv:2603.24607](https://arxiv.org/abs/2603.24607), submitted to EPJC).
 - Presented a poster at the AI for Science Conference, Alan Turing Institute, March 2026.
+- Leading work (build, train, quantise) on GNNs (GATs & GCNs) and architecting EGNNs from the ground up to run on the Edge.
 - Running reconstruction and clustering with Pandora in LArSoft; writing ROOT feature-vector (set) files as inputs for the group's set-transformer models. Developing proficiency in C++, LArSoft, and ROOT.
-- Contributing to interpretability work on set-transformer models.
+- Contributing to mechanistic-interpretability work on set-transformer and graph-attention models.
 - Trained and quantised CNNs (PTQ & QAT) on GENIE-generated LArTPC neutrino datasets to support low-latency, sustainable fast triggers. Supervised by Dr Stefano Vergani (Postdoctoral Research Associate).
 
 ### Photovoltaics undergraduate research assistant
