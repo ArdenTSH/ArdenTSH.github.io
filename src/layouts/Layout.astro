@@ -57,9 +57,33 @@ const {
       })();
     </script>
     <title>{title}</title>
-    {title}
 
     {/* GEO Person Schema for AI Overviews & Search */}
+    <script type="application/ld+json" is:inline>
+      {
+        "@context": "https://schema.org",
+        "@type": "Person",
+        "name": "Arden Tsang",
+        "alternateName": "曾善蘅",
+        "url": "https://ardentsh.github.io/",
+        "jobTitle": "Theoretical & Computational Physicist",
+        "description": "Theoretical and computational physicist.",
+        "sameAs": [
+          "https://github.com/ArdenTSH",
+          "https://www.linkedin.com/in/arden-tsang-22224b2a0/",
+          "https://scholar.google.co.uk/citations?user=yJ3dzdAAAAAJ&hl=en",
+          "https://inspirehep.net/authors/3136464",
+          "https://orcid.org/0009-0008-0782-5394"
+        ],
+        "knowsAbout": [
+          "Theoretical Physics",
+          "Computational Physics",
+          "Mathematical Physics",
+          "Scientific Computing",
+          "Algorithm Design"
+        ]
+      }
+    </script>
   </head>
   <body>
     {/* Graphite grain for notebook-mode titles + the .hand utility. Referenced
