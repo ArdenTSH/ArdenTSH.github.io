@@ -12,11 +12,7 @@ export const site = {
   tagline: "Symmetry and computation, from quantum physics to artificial intelligence to cosmology.",
   // The home hero paragraph: who you are, in a few honest sentences.
   intro:
-    "I'm heading to Cambridge for the MASt in Astrophysics, graduating from BSc Physics with Theoretical Physics at King's College London, with the aim to do a PhD in Theoretical Physics. \
-    My work consists of computational molecular physics, experimental particle physics using machine learning, \
-    and now theoretical cosmology. I am fascinated by the symmetries of nature and how to observe them. Right now I'm looking into the beginning of the unvierse, asking whether \
-    cosmological-collider signatures survive into the gravitational-wave background. \
-    Alongside physics, I write on AI safety and have a deep interest in interpretability.",
+    "I am heading to Cambridge for my MASt in Astrophysics, having graduated with a BSc in Physics with Theoretical Physics from King's College London. While my past research spans computational molecular physics and applying machine learning to experimental particle physics, I have shifted to working on the safety and reliability of automated discovery. My focus is now entirely on Safe AI for Science. I work on mechanistic interpretability, scalable oversight, and grounded verification, with the long-term vision of building a research institute that ensures autonomous AI systems remain trustworthy tools for human inquiry.",
   // Public contact address (used by the dock's Contact links).
   email: "arden.tsang@gmail.com",
 };
