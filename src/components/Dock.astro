@@ -57,6 +57,16 @@ const isExternal = (href: string) => href.startsWith("http");
     </div>
   </div>
 
+  <a
+    class="dock-item"
+    href="/eden"
+    data-tip="Eden"
+    aria-label="Eden — what I'm building"
+    aria-current={active === "eden" ? "page" : undefined}
+  >
+    <Icon name="tabler:seeding" aria-hidden="true" />
+  </a>
+
   {/* Writing tab hidden for now — the page is a WIP (sketch background in progress).
       Page still lives at /writing; uncomment this block to put it back in the nav. */}
   {/* <a

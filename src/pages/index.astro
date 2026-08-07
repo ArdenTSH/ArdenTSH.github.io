@@ -5,7 +5,7 @@ import PageShell from "../layouts/PageShell.astro";
 import Island from "../components/Island.astro";
 import BlackHole from "../components/BlackHole.astro";
 import { Icon } from "astro-icon/components";
-import { researchAreas, site } from "../config/site";
+import { researchAreas, site, eden } from "../config/site";
 ---
 
 <PageShell title={site.name} active="home">
@@ -17,6 +17,23 @@ import { researchAreas, site } from "../config/site";
     <p class="lead">{site.tagline}</p>
     <p class="text-secondary intro">{site.intro}</p>
   </Island>
+
+  <a class="card-link build-link" href="/eden">
+    {/* controls off: the whole card is a link, a button can't live inside <a> */}
+    <Island controls={false} accent>
+      <div class="card-inner">
+        <Icon name={eden.icon} class="card-icon" aria-hidden="true" />
+        <div class="card-body">
+          <p class="eyebrow">{eden.eyebrow}</p>
+          <h3>{eden.title}</h3>
+          <p class="text-secondary">{eden.teaser}</p>
+          <span class="label card-go">
+            Read more <Icon name="tabler:arrow-right" aria-hidden="true" />
+          </span>
+        </div>
+      </div>
+    </Island>
+  </a>
 
   {
     researchAreas.map((a) => (
@@ -46,6 +63,11 @@ import { researchAreas, site } from "../config/site";
   .card-link {
     display: block;
     color: inherit;
+  }
+  /* The "what I'm building" card sits above the research directions; its eyebrow
+     (mono kicker) sets it apart from them. */
+  .build-link .eyebrow {
+    margin: 0;
   }
   .card-inner {
     display: flex;

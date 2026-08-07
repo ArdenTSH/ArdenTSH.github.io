@@ -1,0 +1,61 @@
+---
+// Eden — the venture page. Standalone (NOT a research direction); all copy lives
+// in `eden` in src/config/site.ts. No bespoke background by design — the
+// restrained field + opaque islands carry it, and it still works with any
+// background removed.
+import PageShell from "../layouts/PageShell.astro";
+import Island from "../components/Island.astro";
+import { Icon } from "astro-icon/components";
+import { eden } from "../config/site";
+---
+
+<PageShell title={eden.title} active="eden">
+  <Island as="header">
+    <p class="eyebrow">{eden.eyebrow}</p>
+    <h1>{eden.title}</h1>
+    <p class="lead">{eden.lead}</p>
+    {
+      eden.repo && (
+        <p class="eden-actions">
+          <a class="eden-action" href={eden.repo.href} target="_blank" rel="noopener">
+            <Icon name="tabler:brand-github" aria-hidden="true" /> {eden.repo.label}
+          </a>
+        </p>
+      )
+    }
+  </Island>
+
+  {
+    eden.sections.map((s) => (
+      <Island as="section" class="eden-section">
+        <h2>{s.heading}</h2>
+        {s.body.map((p) => (
+          <p class="text-secondary">{p}</p>
+        ))}
+      </Island>
+    ))
+  }
+</PageShell>
+
+<style>
+  .eden-actions {
+    margin-top: var(--space-4);
+  }
+  .eden-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .eden-action :global(svg) {
+    width: 16px;
+    height: 16px;
+  }
+  .eden-section h2 {
+    font-size: var(--text-lg);
+    font-weight: var(--weight-medium);
+  }
+  .eden-section :global(p) {
+    margin-top: var(--space-3);
+    max-width: var(--measure);
+  }
+</style>
