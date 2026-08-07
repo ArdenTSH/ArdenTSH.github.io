@@ -1,15 +1,17 @@
 ---
 // Eden — the venture page. Standalone (NOT a research direction); all copy lives
-// in `eden` in src/config/site.ts. No bespoke background by design — the
-// restrained field + opaque islands carry it, and it still works with any
-// background removed.
+// in `eden` in src/config/site.ts. Background: the cosmic-web scene reused from
+// the cosmology page (GenesisField). Opaque islands keep the copy legible over
+// it, and the page still works with the background removed.
 import PageShell from "../layouts/PageShell.astro";
 import Island from "../components/Island.astro";
+import GenesisField from "../components/GenesisField.astro";
 import { Icon } from "astro-icon/components";
 import { eden } from "../config/site";
 ---
 
 <PageShell title={eden.title} active="eden">
+  <GenesisField slot="background" />
   <Island as="header">
     <p class="eyebrow">{eden.eyebrow}</p>
     <h1>{eden.title}</h1>

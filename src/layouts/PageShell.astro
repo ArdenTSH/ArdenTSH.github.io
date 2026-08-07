@@ -75,8 +75,9 @@ const { title, description, active = "" } = Astro.props;
   {active === "cv" && <ColliderControls />}
   {/* Neutrino colour-coding control: research/neutrino only. */}
   {active === "neutrino" && <NeutrinoControls />}
-  {/* Starry-mode toggle: cosmology only; the control self-hides outside dark mode. */}
-  {active === "cosmology" && <GenesisControls />}
+  {/* Starry-mode toggle moved with the cosmic-web background to /eden.
+      Re-enable (here or gated on "eden") to bring the redshift/starry switch back. */}
+  {/* {active === "cosmology" && <GenesisControls />} */}
   {/* Depth colour-map toggle: research/materials only (PSO contour background). */}
   {active === "materials" && <PsoControls />}
   {/* GW merger intro overlay (home only; GwMerger self-skips when the gate set .gw-off). */}

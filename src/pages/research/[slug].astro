@@ -16,7 +16,6 @@ import PageShell from "../../layouts/PageShell.astro";
 import Island from "../../components/Island.astro";
 import PsoField from "../../components/PsoField.astro";
 import NeutrinoField from "../../components/NeutrinoField.astro";
-import GenesisField from "../../components/GenesisField.astro";
 // AI-safety background: the RG coarse-graining staircase replaces the old SAEField.
 // SAEField.astro is kept in the repo (unused) so it's a one-line swap to restore.
 import RgStaircase from "../../components/RgStaircase.astro";
@@ -85,8 +84,7 @@ const islands = await Promise.all(
   {/* The computational page runs a live PSO over a drifting landscape behind the islands. */}
   {area.slug === "materials" && <PsoField slot="background" />}
   {area.slug === "neutrino" && <NeutrinoField slot="background" />}
-  {/* Cosmology: a slowly turning cosmic web, galaxies tinted by redshift. */}
-  {area.slug === "cosmology" && <GenesisField slot="background" />}
+  {/* Cosmology: intentionally no background; its cosmic-web scene moved to /eden. */}
   {/* AI safety: a real-space RG coarse-graining staircase — many microscopic
       degrees of freedom on the left collapse into a few collective ones on the right. */}
   {area.slug === "ai" && <RgStaircase slot="background" />}

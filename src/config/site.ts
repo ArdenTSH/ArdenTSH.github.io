@@ -77,50 +77,50 @@ export const eden = {
   short: "Eden",
   // The public benchmark repository (linked from the /eden page header).
   repo: {
-    label: "The A-Lab benchmark — code, data, results",
+    label: "The A-Lab benchmark: code, data, results",
     href: "https://github.com/ArdenTSH/Verification-layer-A-lab",
   },
   // Home-page teaser (the linked island on the home page).
   teaser:
-    "A verification layer for automated science — the part that decides whether an automated result means what it claims, and says so in a way you can open up and argue with.",
+    "A verification layer for automated science. It decides whether an automated result means what it claims, and says so in a way you can open up and check.",
   // The /eden page header lead.
   lead:
-    "Autonomous labs can now run an experiment with no human in the loop. Eden is the layer that decides whether the result means what it claims — and says so in a form you can open up and check for yourself.",
+    "Autonomous labs can now run an experiment with no human in the loop. Eden is the layer that decides whether the result means what it claims, and says so in a form you can open up and check for yourself.",
   // The page body: one island per section.
   sections: [
     {
       heading: "The gap",
       body: [
-        "Producing a scientific result is getting cheap, fast. Checking one is not. Automated labs already run hundreds of experiments with no one watching, and the models reading that data get better every month — but the step that turns a measurement into a claim you can trust has barely moved.",
-        "The field's flagship autonomous-lab demonstration needed a two-year correction cycle to settle a few dozen results. Not because anyone was careless: two capable groups were applying two different, unwritten decision rules to the same data, and a written-down rule was the thing nobody had. That is the gap Eden is built to close.",
+        "Producing a scientific result is getting cheap, fast. Checking one is not. Automated labs already run hundreds of experiments with no one watching, and the models reading that data get better every month. The step that turns a measurement into a claim you can trust has barely moved.",
+        "One flagship autonomous-lab demonstration took two years to settle a few dozen results. Both sides were capable and both argued in good faith. They were applying two different, unwritten decision rules to the same data, and no one had written the rule down. That is the gap Eden closes.",
       ],
     },
     {
       heading: "Write the check, don't be the check",
       body: [
-        "The design is borrowed from how mathematics already solved this. In a proof assistant, an arbitrarily clever program searches for a proof and then hands it to a small, boring kernel that checks it — and the kernel is the only part you have to trust. Eden is the empirical version of that idea.",
-        "An untrusted model reads a scientific claim, breaks it into atomic assertions, and writes checks built from a fixed vocabulary of domain primitives. A sealed kernel runs them. A check is never allowed to return \"verified\": it either refutes the claim with a specific witness — a file, a value, the condition it violated — or it abstains. Verification is only ever the emergent statement that every rival was refuted and nothing refuted the claim. A refutation carries evidence; a confirmation does not, and that asymmetry is what lets a small checker police a large model.",
+        "The design comes from how mathematics already solved this. In a proof assistant, an arbitrarily clever program searches for a proof and then hands it to a small, boring kernel that checks it, and the kernel is the only part you have to trust. Eden is the empirical version of that idea.",
+        "An untrusted model reads a scientific claim, breaks it into atomic assertions, and writes checks from a fixed vocabulary of domain primitives. A sealed kernel runs them. A check is never allowed to return \"verified\". It refutes the claim with a specific witness (a file, a value, the condition it violated), or it abstains. Verification is only ever the emergent statement that every rival was refuted and nothing refuted the claim. A refutation comes with evidence anyone can check. A plain confirmation does not, and that asymmetry is what lets a small checker police a large model.",
       ],
     },
     {
       heading: "When the measurement can't decide",
       body: [
-        "The half I care about most is knowing when a measurement simply could not have decided the question. For a real class of instruments this is computable: given a claim, a named rival, and the physics of the measurement, you can work out how much observation it would have taken to tell them apart.",
-        "If that exceeds what the experiment actually collected, the honest verdict isn't a guess — it's a proposal: here is the experiment that would settle it, and here is roughly what it costs. Aggregate those across a field and you get something that exists nowhere today — a ranked, costed queue of the highest-information experiments nobody has run yet.",
+        "The half I care about most is knowing when a measurement could not have decided the question at all. For a real class of instruments this is computable. Given a claim, a named rival, and the physics of the measurement, you can work out how much observation it would have taken to tell them apart.",
+        "When that is more than the experiment actually collected, the verdict is a proposal: here is the experiment that would settle it, and here is roughly what it costs. Collect those across a field and you get a ranked, costed queue of the highest-information experiments no one has run yet.",
       ],
     },
     {
       heading: "Why this",
       body: [
-        "Every research role I've taken has sat at the same joint — the point where a number coming off an instrument has to become a claim about the world. A trigger deciding in microseconds what to keep. A network asserting an energy nobody will ever measure directly. A spectrum that either is, or isn't, that molecule.",
-        "A model that is confidently wrong looks exactly like one that is right, until something checks. Automating the checking is what makes automating the science worth doing — and it is the same instinct that pulls me toward interpretability: get the legible structure out of a system instead of trusting it because it sounds right.",
+        "Every research role I have taken has sat at the same joint, where a number coming off an instrument has to become a claim about the world. A trigger deciding in microseconds what to keep. A network asserting an energy no one will ever measure directly. A spectrum that either is, or is not, that molecule.",
+        "A model that is confidently wrong looks exactly like one that is right, until something checks. Automating that check is what makes automating the science worth doing. It is the same instinct that pulls me toward interpretability: get the legible structure out of a system rather than trust it because it sounds right.",
       ],
     },
     {
       heading: "What's built so far",
       body: [
-        "The first benchmark is public — the code, the verified label data, and every computed result behind it.",
-        "The first compiled check found that 10 of the 42 deposited structure files describe an ordered phase while carrying mixed or fractional site occupancy — a contradiction you can see by opening the files. A computed distinguishability score — how much counting it would take to tell a claimed structure from its disordered rival — lines up with the difficulty judgments the expert critics reached independently, and standard fit quality turns out to be uncorrelated with their verdicts, so a good fit was never evidence either way. A sealed, contamination-checked model, given only a claim and its file, wrote claim-against-file checks on its own — including for a compound that never existed.",
+        "The first benchmark is public: the code, the verified label data, and every computed result behind it.",
+        "The first compiled check found that 10 of the 42 deposited structure files describe an ordered phase while carrying mixed or fractional site occupancy, a contradiction you can see by opening the files. A computed distinguishability score, how much counting it would take to tell a claimed structure from its disordered rival, lines up with the difficulty judgments the expert critics reached independently. Standard fit quality turns out to be uncorrelated with their verdicts, so a good fit was never evidence either way. A sealed, contamination-checked model, given only a claim and its file, wrote claim-against-file checks on its own, including for a compound that never existed.",
         "From here the same machinery extends outward: more checks, a second measurement class, and the ranked, costed queue of experiments that the abstentions produce.",
       ],
     },
