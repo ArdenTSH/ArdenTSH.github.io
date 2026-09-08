@@ -25,17 +25,68 @@ import { eden } from "../config/site";
         </p>
       )
     }
+    {
+      eden.funding && (
+        <p class="eden-funding">
+          <a href={eden.funding.announcement} target="_blank" rel="noopener">Funded</a> by the{" "}
+          <a href={eden.funding.cosmos} target="_blank" rel="noopener">Cosmos Institute</a> and{" "}
+          <a href={eden.funding.fire} target="_blank" rel="noopener">FIRE</a>, {eden.funding.programme}.
+        </p>
+      )
+    }
   </Island>
 
   {
-    eden.sections.map((s) => (
-      <Island as="section" class="eden-section">
-        <h2>{s.heading}</h2>
-        {s.body.map((p) => (
-          <p class="text-secondary">{p}</p>
-        ))}
+    eden.sections.map((s) => {
+      // Same island convention as the research pages: a section heading shares
+      // its card with the FIRST sub-section under it; later sub-sections each
+      // get their own island.
+      const parts = (s as any).parts ?? [];
+      const [first, ...rest] = parts;
+      return (
+        <>
+          <Island as="section" class="eden-section">
+            <h2>{s.heading}</h2>
+            {s.body.map((p: string) => (
+              <p class="text-secondary">{p}</p>
+            ))}
+            {first && (
+              <>
+                <h3>{first.heading}</h3>
+                {first.body.map((p: string) => (
+                  <p class="text-secondary">{p}</p>
+                ))}
+              </>
+            )}
+          </Island>
+          {rest.map((part: { heading: string; body: string[] }) => (
+            <Island as="section" class="eden-section eden-part">
+              <h3>{part.heading}</h3>
+              {part.body.map((p: string) => (
+                <p class="text-secondary">{p}</p>
+              ))}
+            </Island>
+          ))}
+        </>
+      );
+    })
+  }
+
+  {
+    eden.funding?.card && (
+      <Island as="section" class="eden-card">
+        <a href={eden.funding.announcement} target="_blank" rel="noopener">
+          <img
+            src={eden.funding.card}
+            alt={eden.funding.cardAlt}
+            width="1400"
+            height="788"
+            loading="lazy"
+            decoding="async"
+          />
+        </a>
       </Island>
-    ))
+    )
   }
 </PageShell>
 
@@ -52,12 +103,45 @@ import { eden } from "../config/site";
     width: 16px;
     height: 16px;
   }
+  /* Provenance line: quieter than the repository link above it. */
+  .eden-funding {
+    margin-top: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+  }
   .eden-section h2 {
-    font-size: var(--text-lg);
+    /* A new chapter, one step up — matches the CV's section titles. */
+    font-size: var(--text-xl);
     font-weight: var(--weight-medium);
   }
   .eden-section :global(p) {
     margin-top: var(--space-3);
     max-width: var(--measure);
+  }
+  /* Sub-section heading: the section's first part shares its card, so the h3
+     needs air above it; a part that owns its island starts flush. */
+  .eden-section h3 {
+    margin-top: var(--space-6);
+    font-size: var(--text-md);
+    font-weight: var(--weight-medium);
+  }
+  .eden-part h3 {
+    margin-top: 0;
+  }
+
+  /* The grant card: a plain figure at the foot, no frame and no caption, so it
+     reads as an artefact rather than a badge. */
+  .eden-card img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: var(--radius-sm);
+  }
+  /* In the dark view the card inverts: its white ground goes black and its dark
+     ink goes white. The 180 degree hue rotation puts the colour back, so the
+     blues stay blue. Measured on this file, the title blue rgb(46,123,246)
+     lands on rgb(70,147,255), a shift of about two degrees of hue. */
+  :global(:root[data-theme="dark"]) .eden-card img {
+    filter: invert(1) hue-rotate(180deg);
   }
 </style>

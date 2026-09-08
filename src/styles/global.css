@@ -110,7 +110,10 @@
   --text-base: 1rem;       /* 16px   — body */
   --text-md:   1.125rem;   /* 18px   — lead paragraph, island intro */
   --text-lg:   1.3125rem;  /* 21px   — h3 / card titles */
-  --text-xl:   1.625rem;   /* 26px   — h2 */
+  --text-xl:   1.625rem;   /* 26px   — h3 in the dark view */
+  --text-chapter: 1.8125rem; /* 29px — h2: a new chapter (CV / Eden / research
+                                sections). Sits between xl and 2xl so a chapter
+                                announces itself without crowding the page h1. */
   --text-2xl:  2.0625rem;  /* 33px   — h1 (interior pages) */
   --text-3xl:  2.625rem;   /* 42px   — display / home hero name */
 
@@ -473,7 +476,7 @@ h1 {
   color: var(--text-primary);
 }
 h2 {
-  font-size: var(--text-xl);
+  font-size: var(--text-chapter);
   line-height: var(--leading-tight);
   letter-spacing: var(--tracking-tight);
   font-weight: var(--weight-medium);

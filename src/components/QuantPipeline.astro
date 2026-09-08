@@ -1,0 +1,178 @@
+---
+// <QuantPipeline> — the two deployment routes benchmarked in arXiv:2603.24607.
+// Boxes and SVG arrows drawn from the theme tokens, like <PipelineFigure>: no
+// image asset, no canvas, no library, nothing to animate.
+//
+// Flow: one trained float32 model forks into post-training quantisation and
+// quantisation-aware training, both routes then pass through the SAME compiler
+// before reaching the device. The compiler is drawn dashed because it is the
+// proprietary step, and it is where the benchmark's largest losses appear.
+//
+// Column on narrow screens (arrows rotate), row from 900px up.
+---
+
+<figure class="quant">
+  <div class="quant-flow">
+    <div class="node node--io">
+      <span class="node-title">Trained model</span>
+      <span class="node-meta">float32</span>
+    </div>
+
+    <div class="arrow" aria-hidden="true">
+      <svg class="arrow-glyph" viewBox="0 0 40 12"
+        ><line x1="0" y1="6" x2="31" y2="6"></line><path d="M31 2 L39 6 L31 10 Z"></path></svg
+      >
+    </div>
+
+    {/* The fork: two routes to the same 8-bit model. */}
+    <div class="fork">
+      <div class="node node--route">
+        <span class="node-tag">PTQ</span>
+        <span class="node-title">Convert, then calibrate</span>
+      </div>
+      <div class="node node--route">
+        <span class="node-tag">QAT</span>
+        <span class="node-title">Fine-tune, then convert</span>
+      </div>
+    </div>
+
+    <div class="arrow arrow--labelled" aria-hidden="true">
+      <span class="arrow-label">uint8</span>
+      <svg class="arrow-glyph" viewBox="0 0 40 12"
+        ><line x1="0" y1="6" x2="31" y2="6"></line><path d="M31 2 L39 6 L31 10 Z"></path></svg
+      >
+    </div>
+
+    <div class="node node--opaque">
+      <span class="node-tag">proprietary</span>
+      <span class="node-title">Compile</span>
+    </div>
+
+    <div class="arrow" aria-hidden="true">
+      <svg class="arrow-glyph" viewBox="0 0 40 12"
+        ><line x1="0" y1="6" x2="31" y2="6"></line><path d="M31 2 L39 6 L31 10 Z"></path></svg
+      >
+    </div>
+
+    <div class="node node--io">
+      <span class="node-title">Edge TPU</span>
+      <span class="node-meta">≈2 W</span>
+    </div>
+  </div>
+
+  <figcaption class="quant-caption">
+    Both routes reach the device through the same compiler, and that is the step
+    where the accuracy in the table below is lost.
+  </figcaption>
+</figure>
+
+<style>
+  .quant {
+    margin: var(--space-4) 0 0;
+    max-width: var(--measure);
+  }
+
+  .quant-flow {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+  }
+
+  /* ── Nodes ─────────────────────────────────────────────────────────────── */
+  .node {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--space-2) var(--space-3);
+    border: var(--hairline) solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    text-align: center;
+  }
+  /* What sits outside the conversion: the model going in, the device it lands on. */
+  .node--io {
+    border-style: dashed;
+    background: none;
+  }
+  .node--io .node-title { color: var(--text-secondary); }
+  /* The two routes carry the single accent, used as an indicator. */
+  .node--route { border-color: var(--accent-line); }
+  /* The step that cannot be inspected. */
+  .node--opaque { border-style: dashed; }
+  .node--opaque .node-tag { color: var(--text-faint); }
+
+  .node-tag {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-label);
+    color: var(--accent);
+  }
+  .node-title {
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+  }
+  .node-meta {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-label);
+    color: var(--text-secondary);
+  }
+
+  /* The fork holds both routes in the slot one node would occupy. */
+  .fork {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .fork .node { flex: 1 1 0; justify-content: center; }
+
+  /* ── Arrows ────────────────────────────────────────────────────────────── */
+  .arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    color: var(--text-faint);
+  }
+  .arrow-glyph {
+    width: 26px;
+    height: 10px;
+    transform: rotate(90deg); /* column layout: pointing down */
+    overflow: visible;
+  }
+  .arrow-glyph line {
+    stroke: currentColor;
+    stroke-width: 1.25;
+  }
+  .arrow-glyph path { fill: currentColor; }
+  .arrow-label {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-label);
+    color: var(--text-secondary);
+  }
+
+  .quant-caption {
+    margin-top: var(--space-3);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+  }
+
+  /* ── Wide: lay the flow out left to right ──────────────────────────────── */
+  @media (min-width: 900px) {
+    .quant-flow {
+      flex-direction: row;
+      align-items: stretch;
+      gap: var(--space-1);
+    }
+    .node { flex: 1 1 0; justify-content: center; min-width: 0; }
+    .fork { flex: 1.35 1 0; }
+    .arrow {
+      flex: 0 0 auto;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .arrow-glyph { transform: none; }
+  }
+</style>

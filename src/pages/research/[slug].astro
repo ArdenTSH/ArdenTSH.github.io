@@ -19,12 +19,24 @@ import NeutrinoField from "../../components/NeutrinoField.astro";
 // AI-safety background: the RG coarse-graining staircase replaces the old SAEField.
 // SAEField.astro is kept in the repo (unused) so it's a one-line swap to restore.
 import RgStaircase from "../../components/RgStaircase.astro";
+import HorizonField from "../../components/HorizonField.astro";
 // Interactive cluster figure (materials page). A Markdown paragraph reading
 // exactly `[[viewer:KEY]]` is swapped for <ClusterViewer> with the KEY's config
 // below, so the write-up stays plain Markdown and the figure stays removable.
 import ClusterViewer from "../../components/ClusterViewer.astro";
+// Static diagrams are addressed the same way: `[[figure:KEY]]`.
+import PipelineFigure from "../../components/PipelineFigure.astro";
+import QuantPipeline from "../../components/QuantPipeline.astro";
+import EventTriptych from "../../components/EventTriptych.astro";
+import EnergyChart from "../../components/EnergyChart.astro";
 const VIEWERS: Record<string, { src: string; label: string }> = {
   c20: { src: "/structures/C20_fullerene.xyz", label: "C₂₀ fullerene cage, the swarm's best structure" },
+};
+const FIGURES: Record<string, any> = {
+  pipeline: PipelineFigure,       // materials: the PSO + DFT workflow
+  quantisation: QuantPipeline,    // neutrino: the two deployment routes
+  events: EventTriptych,          // neutrino: the three interaction classes
+  energy: EnergyChart,            // neutrino: energy against latency
 };
 import { Icon } from "astro-icon/components";
 import { getCollection } from "astro:content";
@@ -56,7 +68,12 @@ const md = unified()
   .use(remarkSmartypants)
   .use(remarkRehype, { allowDangerousHtml: true })
   .use(rehypeStringify, { allowDangerousHtml: true });
-const toHtml = async (src: string) => String(await md.process(src));
+// Tables get a scroll wrapper so a wide table scrolls inside its island instead
+// of stretching it (the island column is a fixed width).
+const toHtml = async (src: string) =>
+  String(await md.process(src))
+    .replace(/<table>/g, '<div class="table-scroll"><table>')
+    .replace(/<\/table>/g, "</table></div>");
 
 // Split the raw body into heading-delimited blocks. `level` is 0 (preamble),
 // 2 (## section-lead) or 3 (### part); each block becomes one island.
@@ -76,16 +93,36 @@ for (const line of raw.split("\n")) {
 }
 if (cur) blocks.push(cur);
 
+// A "##" section title and the first "###" under it read as one unit, so they
+// share ONE island: the section title, its standfirst and the first part
+// together. Later "###" blocks under the same section stay separate islands,
+// and a "##" with no "###" after it (an Outputs list, say) is left alone.
+const units: Block[] = [];
+for (let i = 0; i < blocks.length; i++) {
+  const b = blocks[i];
+  const next = blocks[i + 1];
+  if (b.level === 2 && next && next.level === 3) {
+    units.push({ level: 2, lines: [...b.lines, ...next.lines] });
+    i++;
+  } else {
+    units.push(b);
+  }
+}
+
 // Each island's HTML is split around viewer markers into segments, so a figure
 // can sit between paragraphs of the same island.
-type Segment = { kind: "html"; html: string } | { kind: "viewer"; key: string };
-const MARK = /<p>\[\[viewer:([a-z0-9-]+)\]\]<\/p>/g;
+type Segment =
+  | { kind: "html"; html: string }
+  | { kind: "viewer"; key: string }
+  | { kind: "figure"; key: string };
+const MARK = /<p>\[\[(viewer|figure):([a-z0-9-]+)\]\]<\/p>/g;
 const segment = (html: string): Segment[] => {
   const out: Segment[] = [];
   let i = 0;
   for (const m of html.matchAll(MARK)) {
     if (m.index! > i) out.push({ kind: "html", html: html.slice(i, m.index) });
-    if (VIEWERS[m[1]]) out.push({ kind: "viewer", key: m[1] });
+    if (m[1] === "viewer" && VIEWERS[m[2]]) out.push({ kind: "viewer", key: m[2] });
+    if (m[1] === "figure" && FIGURES[m[2]]) out.push({ kind: "figure", key: m[2] });
     i = m.index! + m[0].length;
   }
   if (i < html.length) out.push({ kind: "html", html: html.slice(i) });
@@ -93,7 +130,7 @@ const segment = (html: string): Segment[] => {
 };
 
 const islands = await Promise.all(
-  blocks
+  units
     .filter((b) => b.lines.join("").trim().length > 0)
     .map(async (b) => ({
       cls:
@@ -107,7 +144,10 @@ const islands = await Promise.all(
   {/* The computational page runs a live PSO over a drifting landscape behind the islands. */}
   {area.slug === "materials" && <PsoField slot="background" />}
   {area.slug === "neutrino" && <NeutrinoField slot="background" />}
-  {/* Gravity (formerly cosmology): no background yet; the cosmic-web scene moved to /eden. */}
+  {/* Gravity: a black-hole horizon seen from close, tiled in cells whose COUNT
+      scales with area — the Bekenstein-Hawking area law, which is holography's
+      founding fact and the it-from-qubit picture stated literally. */}
+  {area.slug === "gravity" && <HorizonField slot="background" />}
   {/* AI safety: a real-space RG coarse-graining staircase — many microscopic
       degrees of freedom on the left collapse into a few collective ones on the right. */}
   {area.slug === "ai" && <RgStaircase slot="background" />}
@@ -125,9 +165,12 @@ const islands = await Promise.all(
       islands.map((b) => (
         <Island>
           <div class={b.cls}>
-            {b.segments.map((s) =>
-              s.kind === "html" ? <Fragment set:html={s.html} /> : <ClusterViewer {...VIEWERS[s.key]} />,
-            )}
+            {b.segments.map((s) => {
+              if (s.kind === "html") return <Fragment set:html={s.html} />;
+              if (s.kind === "viewer") return <ClusterViewer {...VIEWERS[s.key]} />;
+              const Figure = FIGURES[s.key];
+              return <Figure />;
+            })}
           </div>
         </Island>
       ))
@@ -161,8 +204,9 @@ const islands = await Promise.all(
     line-height: var(--leading-snug);
     max-width: var(--measure);
   }
-  .research-intro :global(p + p),
+  /* Intro paragraphs all read at the same level: no emphasis on the second. */
   .research-intro :global(strong) { color: var(--text-primary); }
+  .research-intro :global(p + p) { margin-top: var(--space-3); }
 
   /* Section-lead island — a section title + a two-line standfirst. */
   .research-section :global(h2) { margin-bottom: var(--space-3); }
@@ -174,6 +218,47 @@ const islands = await Promise.all(
   }
   .research-section :global(p + p) { margin-top: var(--space-3); }
   .research-section :global(strong) { color: var(--text-primary); }
+  /* A section island that is just a list (Outputs) has no h3 to hang the list
+     rules below off, so give bare lists the same treatment. */
+  .research-section :global(ul) {
+    margin-top: var(--space-3);
+    padding-left: 1.15rem;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .research-section :global(li) {
+    color: var(--text-secondary);
+    line-height: var(--leading-snug);
+    max-width: var(--measure);
+  }
+  .research-section :global(li)::marker { color: var(--text-faint); }
+
+  /* A merged section island also carries its first part, so everything from the
+     h3 onward is styled as part prose rather than as the section standfirst.
+     `h3 ~ …` comes after the rules above, so it wins for those elements. */
+  .research-section :global(h3) {
+    margin-top: var(--space-6);
+    margin-bottom: var(--space-3);
+  }
+  .research-section :global(h3 ~ p) {
+    font-size: var(--text-base);
+    margin-top: var(--space-3);
+  }
+  .research-section :global(h3 ~ ul) {
+    margin-top: var(--space-3);
+    padding-left: 1.15rem;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .research-section :global(h3 ~ ul li) {
+    color: var(--text-secondary);
+    line-height: var(--leading-snug);
+    max-width: var(--measure);
+  }
+  .research-section :global(h3 ~ ul li)::marker { color: var(--text-faint); }
+  .research-section :global(h3 ~ pre) { margin-top: var(--space-4); }
 
   /* Part island — a sub-heading + body prose (why / problem / method / …). */
   .research-part :global(h3) { margin-bottom: var(--space-3); }
@@ -200,4 +285,50 @@ const islands = await Promise.all(
   .research-part :global(strong) { color: var(--text-primary); }
   /* Placeholder equation / data blocks read as the mono "instrument" voice. */
   .research-part :global(pre) { margin-top: var(--space-4); overflow-x: auto; }
+
+  /* ── Data tables (the neutrino benchmark numbers) ────────────────────────
+     Same "instrument" voice as the pre blocks: mono, hairline rules, no fill.
+     The wrapper scrolls on narrow screens so the island never overflows. */
+  .research-part :global(.table-scroll),
+  .research-section :global(.table-scroll) {
+    margin-top: var(--space-4);
+    overflow-x: auto;
+  }
+  .research-part :global(table),
+  .research-section :global(table) {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+  }
+  .research-part :global(th),
+  .research-part :global(td),
+  .research-section :global(th),
+  .research-section :global(td) {
+    padding: 7px 12px 7px 0;
+    border-bottom: var(--hairline) solid var(--border);
+    white-space: nowrap;
+    color: var(--text-secondary);
+  }
+  .research-part :global(th),
+  .research-section :global(th) {
+    text-align: left;
+    font-weight: var(--weight-medium);
+    letter-spacing: var(--tracking-label);
+    color: var(--text-primary);
+    border-bottom-color: var(--border-strong);
+  }
+  /* GFM emits align="right" as a presentational hint, which author CSS above
+     would otherwise beat. Re-assert it so number columns stay right-aligned. */
+  .research-part :global([align="right"]),
+  .research-section :global([align="right"]) { text-align: right; }
+  .research-part :global(tbody tr:last-child td),
+  .research-section :global(tbody tr:last-child td) { border-bottom: 0; }
+  /* The caption line that follows a table. */
+  .research-part :global(.table-scroll + p),
+  .research-section :global(.table-scroll + p) {
+    font-size: var(--text-sm);
+    color: var(--text-faint);
+  }
 </style>

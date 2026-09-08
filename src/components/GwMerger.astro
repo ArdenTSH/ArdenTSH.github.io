@@ -5,7 +5,7 @@
 // (graph paper) sheared by the true transverse-traceless QUADRUPOLAR strain h+/h×,
 // evaluated at each dot's RETARDED time t−r/c so the wave propagates outward at finite
 // speed with the chirp frozen into the shells; and (2) the kid-drawing layer — bold
-// hand-drawn expanding wave-rings + a spiky "POW" explosion at merger. A slight
+// hand-drawn expanding wave-rings + a billowing cloud at merger. A slight
 // stop-motion boil runs through the sketch and SMOOTHS OUT as the camera dives into
 // the remnant (the drawing becoming real). Theme-matched (reads the live tokens), so
 // it lands cleanly on whichever Home it precedes. Reduced-motion = one static frame.
@@ -47,6 +47,9 @@
     // RGB tuples + lerp helpers: the dive travels cream → dark space → cream, so the
     // background, grid, accretion and hole colours are all interpolated each frame.
     const RGB_BG = [239, 229, 207], RGB_DARK = [6, 8, 13], RGB_INK = [43, 43, 49], RGB_STAR = [200, 210, 226], RGB_VOID = [4, 5, 10];
+    // Merger-cloud smoke: sampled off the accretion disk the cloud dissolves into
+    // (~215,206,190), pulled a little darker so it still reads against cream paper.
+    const RGB_SMOKE = [186, 177, 163];
     const c01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
     const mix = (a: number[], b: number[], t: number) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
     const rgb = (c: number[]) => "rgb(" + (c[0] | 0) + "," + (c[1] | 0) + "," + (c[2] | 0) + ")";
@@ -321,39 +324,69 @@
       }
       ctx.stroke(); ctx.globalAlpha = 1;
     };
-    // a kid's comic explosion: a spiky star, jagged lightning bolts, + flung debris
-    const explosion = (px: number, py: number, rad: number, prog: number, seed: number) => {
-      const fade = Math.max(0, 1 - prog);
-      ctx.lineCap = "round"; ctx.lineJoin = "round";
-      for (let pass = 0; pass < 2; pass++) {                        // the spiky star, varied spike lengths, gone over twice
-        ctx.globalAlpha = (0.9 - 0.3 * pass) * fade; ctx.strokeStyle = wave; ctx.lineWidth = (3.4 - pass) * (minWH / 900);
-        ctx.beginPath();
-        const spikes = 20;
-        for (let i = 0; i <= spikes * 2; i++) {
-          const t = (i / (spikes * 2)) * TAU, out = i % 2 === 0;
-          const base = out ? rad * (0.7 + Math.abs(hash(seed + i, i)) * 1.0) : rad * 0.4;
-          const rj = base * (0.5 + prog);
-          const x = px + Math.cos(t) * rj, y = py + Math.sin(t) * rj;
-          i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    // The merger throws a BILLOWING CLOUD, not a comic starburst. Its job is to cover
+    // the centre of the frame while the cream sketch cross-dissolves to the real WebGL
+    // black hole underneath, so it is built from FILLED lobes rather than strokes: line
+    // art leaves the cut showing through its gaps, which is what made the swap read hard.
+    //
+    // Each layer is ONE path filled ONCE, so overlapping lobes union under the nonzero
+    // winding rule instead of stacking alpha and showing seams where they cross.
+    const cloudLayer = (
+      n: number, rIn: number, rOut: number, lobeMin: number, lobeMax: number,
+      spin: number, wob: number, alpha: number, seed: number, col: number[],
+    ) => {
+      if (alpha <= 0.004) return;
+      const GA = 2.39996;                                          // golden angle: even spread, no visible ring of blobs
+      ctx.beginPath();
+      for (let i = 0; i < n; i++) {
+        const a = i * GA + spin + hash(seed + i, i) * 0.30;
+        const d = rIn + (rOut - rIn) * Math.sqrt((i + 0.5) / n) * (1 + hash(seed + i * 5, i) * 0.16);
+        const lx = Math.cos(a) * d, ly = Math.sin(a) * d;
+        const lr = lobeMin + (lobeMax - lobeMin) * Math.abs(hash(seed + i * 11, i)) * 2;
+        // Each lobe is a circle deformed by two low harmonics, so it reads as a soft
+        // puff. Per-segment noise would give the spiky, faceted edge we are avoiding.
+        const ph1 = hash(seed + i, 1) * TAU, ph2 = hash(seed + i, 2) * TAU;
+        const seg = 22;
+        for (let sg = 0; sg <= seg; sg++) {
+          const t = (sg / seg) * TAU;
+          const rj = lr * (1 + wob * (Math.sin(3 * t + ph1) * 0.6 + Math.sin(5 * t + ph2) * 0.4));
+          const x = lx + Math.cos(t) * rj, y = ly + Math.sin(t) * rj;
+          sg === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
         }
-        ctx.closePath(); ctx.stroke();
+        ctx.closePath();
       }
-      ctx.globalAlpha = 0.85 * fade; ctx.lineWidth = 2.5 * (minWH / 900);   // zig-zag lightning bolts shooting out
-      for (let b = 0; b < 11; b++) {
-        const a = (b / 11) * TAU + hash(seed + b, b) * 0.5, len = rad * (1.1 + Math.abs(hash(seed + b * 7, b)) * 0.8) * (0.5 + prog);
-        ctx.beginPath(); ctx.moveTo(px + Math.cos(a) * rad * 0.5, py + Math.sin(a) * rad * 0.5);
-        for (let s = 1; s <= 3; s++) {
-          const rr2 = rad * 0.5 + (len - rad * 0.5) * s / 3, off = (s % 2 ? 1 : -1) * rad * 0.13 * (1 + hash(seed + b + s, s));
-          ctx.lineTo(px + Math.cos(a) * rr2 + Math.cos(a + 1.57) * off, py + Math.sin(a) * rr2 + Math.sin(a + 1.57) * off);
-        }
-        ctx.stroke();
-      }
-      ctx.globalAlpha = 0.7 * fade * prog;                         // little debris bits flung outward (tiny curved marks)
-      for (let d = 0; d < 18; d++) {
-        const a = hash(seed + d * 3, d) * TAU, dist = rad * (1.1 + Math.abs(hash(seed + d, d)) * 0.9) * prog;
-        ctx.beginPath(); ctx.arc(px + Math.cos(a) * dist, py + Math.sin(a) * dist, rad * 0.1, a, a + 2.3); ctx.stroke();
-      }
+      ctx.globalAlpha = alpha; ctx.fillStyle = rgb(col); ctx.fill();
       ctx.globalAlpha = 1;
+    };
+    // prog 0 -> 1 across the burst. The cloud bursts open fast, holds through the cut,
+    // then dissipates from the OUTSIDE IN, so the centre (where the black hole is
+    // arriving) stays covered longest and the disk is never seen to pop in.
+    const explosion = (
+      px: number, py: number, rad: number, prog: number, seed: number, rDark: number,
+    ) => {
+      const ss = (x: number) => { const t = c01(x); return t * t * (3 - 2 * t); };
+      const grow = 0.40 + 1.05 * (1 - Math.pow(1 - prog, 2.4));    // fast out, then settling
+      const spin = prog * 0.45;                                    // the mass churns as it expands
+      const g = rad * grow;
+      ctx.save(); ctx.translate(px, py);
+      // The BODY of the cloud is smoke-coloured, close to the accretion disk it
+      // dissolves into, so the reveal is not a value inversion (dark mass -> bright
+      // disk). Many small puffs, low alpha each, thinning outward.
+      cloudLayer(58, g * 0.60, g * 1.75, g * 0.12, g * 0.30, spin * 1.30, 0.13,
+                 0.30 * (1 - ss((prog - 0.10) / 0.72)), seed + 3, RGB_SMOKE);
+      cloudLayer(40, g * 0.42, g * 1.38, g * 0.15, g * 0.36, -spin * 1.05, 0.12,
+                 0.46 * (1 - ss((prog - 0.16) / 0.72)), seed + 17, RGB_SMOKE);
+      cloudLayer(30, g * 0.26, g * 1.02, g * 0.20, g * 0.44, spin * 0.80, 0.11,
+                 0.64 * (1 - ss((prog - 0.22) / 0.72)), seed + 41, RGB_SMOKE);
+      cloudLayer(24, g * 0.12, g * 0.78, g * 0.24, g * 0.52, -spin * 0.55, 0.10,
+                 0.88 * (1 - ss((prog - 0.26) / 0.72)), seed + 71, RGB_SMOKE);
+      // ONLY this is ink: a small opaque core over the remnant, sized to the shadow
+      // it hands off to, growing gently as the camera flies in. It clears last, so
+      // dark dissolves into dark and the black hole is never seen to arrive.
+      const d = rDark * (1 + 0.55 * prog);
+      cloudLayer(11, 0, d * 0.55, d * 0.58, d * 0.95, spin * 0.30, 0.09,
+                 1.00 * (1 - ss((prog - 0.34) / 0.66)), seed + 97, RGB_INK);
+      ctx.restore();
     };
 
     // ---- the two trailing GW spiral arms (layer 1) + the black-hole blobs --------
@@ -442,11 +475,12 @@
       drawSpirals(eT, seed);
       // black holes: hand-drawn dark blobs (two inspiralling, then the merged remnant)
       for (const b of bod) handBlob(b[0], b[1], b[2], hole, seed * 7 + (b[0] | 0));
-      // (2b) the merger explosion — a comic POW: spiky star + bolts + flung debris (masks the cut)
+      // (2b) the merger burst — a billowing cloud that masks the 2D→3D cut
       const burst = (eT - tM);
-      if (burst >= -STEP && burst < 850) {                          // bigger + longer so it covers the whole 2D→3D fade
-        const prog = Math.max(0, Math.min(1, burst / 850));
-        explosion(0, 0, baseR * 9 * Math.cbrt(mTot), prog, seed * 13);
+      const BURST_MS = 1700;                                        // runs past the cream fade and through the canvas fade, so neither ends abruptly
+      if (burst >= -STEP && burst < BURST_MS) {
+        const prog = Math.max(0, Math.min(1, burst / BURST_MS));
+        explosion(0, 0, baseR * 9 * Math.cbrt(mTot), prog, seed * 13, bod[0] ? bod[0][2] : baseR * 1.5);
       }
       ctx.restore();
 
@@ -454,7 +488,7 @@
       // opaque explosion. This whole-canvas fade runs LATER — only to clear the residual 2D
       // remnant blob after the explosion is spent (~p0.83), black-blob → black WebGL-BH, seamless.
       // gw:reveal-soon un-pauses the iframe; gw:explode flies it in.
-      canvas.style.opacity = String(1 - ease(cl(0.83, 0.93)));
+      canvas.style.opacity = String(1 - cl(0.86, 0.99));   // linear + late: the cloud thins out under it
       if (p >= 0.50 && !revealSoonFired) { revealSoonFired = true; try { window.dispatchEvent(new CustomEvent("gw:reveal-soon")); } catch (e) {} }
       if (p >= 0.62 && !explodeFired) { explodeFired = true; try { window.dispatchEvent(new CustomEvent("gw:explode")); } catch (e) {} }
       if (p >= 0.985 && !doneFired) { doneFired = true; try { window.dispatchEvent(new CustomEvent("gw:done")); } catch (e) {} }
@@ -470,7 +504,11 @@
       raf = requestAnimationFrame(frame);
     };
     const play = () => { if (playing) return; playing = true; diving = false; doneFired = false; revealSoonFired = false; explodeFired = false; canvas.style.opacity = "1"; try { window.dispatchEvent(new CustomEvent("gw:reset")); } catch (e) {} t = 0; last = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(frame); };
-    const staticFrame = () => render(tM + 2 * TAU_RD);
+    // Reduced motion gets ONE still. It has to be a frame with no cloud in it: the
+    // burst is opaque by design, so the old post-merger time now lands inside it and
+    // would show a dark mass. Just before merger reads as what the piece is: two black
+    // holes about to meet, with the wave pattern around them.
+    const staticFrame = () => render(tM - 4 * STEP);
 
     resize();
     window.addEventListener("resize", () => { resize(); if (!playing) (reduce.matches ? staticFrame() : render(t)); });

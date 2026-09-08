@@ -15,11 +15,18 @@
   first-author manuscript). Add the paper link here once the journal publishes.
 -->
 
-My first research was computational, and it set the pattern for everything
-since: take a system you can't solve by hand, search its space intelligently,
-and let the structure that falls out tell you the physics. The thread
-through this work is **from structure to spectrum**: first *where the atoms
-sit*, then *what that geometry would let us observe*.
+I came into scientific research through computational physics. I want to
+harness modern computational methods for research, and machine-learnt tools
+have changed what that means: learned potentials and surrogate models now stand
+in for the calculations that used to set the ceiling on what could be
+attempted.
+
+What fascinates me is representation. A system has to become something a
+machine can operate on before a search runs, and that choice sets the boundary
+of what can be found. That makes it a matter of technical epistemics as much as
+method, since the encoding decides what a result is able to establish. The same
+choice recurs in what a detector event is to a network, and in what a
+scientific claim is to a checker.
 
 ## Carbon nanoclusters by particle-swarm search
 
@@ -70,10 +77,7 @@ Deferring DFT to one final relaxation replaces the swarm-size × iterations DFT
 calls per run of the DFT-in-the-loop literature with a single one, which is
 what makes C₂₀ reachable.
 
-```
-random swarm → PSO search, GFN2-xTB fitness → g_best
-g_best → LBFGS relaxation, PBE+VV10/def2-tzvp → structure
-```
+[[figure:pipeline]]
 
 Three additions made the workflow usable at scale. A **step-cap** on the DFT
 relaxation, because LBFGS oscillates rather than converges at the linear
@@ -150,3 +154,15 @@ consistent with the observed rotational constants, pinning down a specific
 three-body geometry from spectroscopic data. It is the mirror image of the
 cluster search: there, structure predicts the spectrum; here, the spectrum pins
 down the structure. The same idea, read in both directions.
+
+## Photonics
+
+A year in a photovoltaics laboratory, cutting structure into a material to
+control what it does with light.
+
+### Nanostructuring perovskite
+
+I integrated CAD (Fusion 360 and Inkscape) with a V4.75 CO₂ laser to
+nanostructure perovskite for spectral filtering, and investigated dichroic
+filters and perovskite for agrivoltaics, panels that pass the wavelengths a
+crop needs and harvest the rest.

@@ -60,7 +60,10 @@ const rendered = await Promise.all(
 
   /* Each CV section is its own island; its h2 is the section title. */
   .cv-section h2 {
-    font-size: var(--text-lg);
+    /* One step above the CV's compact scale so a new section reads as a new
+       chapter; still below the site-wide --text-chapter, since this page is a
+       dense formal record. */
+    font-size: var(--text-xl);
     font-weight: var(--weight-medium);
   }
   /* Section body (rendered Markdown -> styles target it via :global). */

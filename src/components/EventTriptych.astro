@@ -1,0 +1,106 @@
+---
+// <EventTriptych> — the three interaction classes the classifier has to tell
+// apart, as the detector records them. The paper's Figure 1, re-cut for the web:
+// the matplotlib frame is cropped off and the white ground is transparent, so
+// the ink sits directly on the island and the panel border comes from the theme.
+//
+// Source: arXiv:2603.24607, Fig. 1 (simulated LArTPC events, collection view).
+// The PNGs in public/images/neutrino/ were made from the paper's figure PDFs;
+// delete the component and the page simply loses the figure.
+const EVENTS = [
+  { src: "/images/neutrino/numu.png", tag: "CC νμ", desc: "a long muon track" },
+  { src: "/images/neutrino/nue.png", tag: "CC νe", desc: "an electromagnetic shower" },
+  { src: "/images/neutrino/nc.png", tag: "NC", desc: "neither of them" },
+];
+---
+
+<figure class="events">
+  <div class="events-row">
+    {
+      EVENTS.map((e) => (
+        <div class="event">
+          <div class="event-frame">
+            <img
+              src={e.src}
+              alt={`Simulated ${e.tag} neutrino interaction: ${e.desc}.`}
+              width="620"
+              height="602"
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+          <span class="event-tag">{e.tag}</span>
+          <span class="event-desc">{e.desc}</span>
+        </div>
+      ))
+    }
+  </div>
+  <figcaption class="events-caption">
+    Three simulated interactions in the collection view, charge running dark to
+    cyan. The images the network is given stack all three readout views the way
+    a colour image stacks its channels.
+  </figcaption>
+</figure>
+
+<style>
+  .events {
+    margin: var(--space-4) 0 0;
+    max-width: var(--measure);
+  }
+
+  .events-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-3);
+  }
+
+  .event {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  /* The panel edge is the theme's hairline, so the figure follows the toggle. */
+  .event-frame {
+    border: var(--hairline) solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 4px;
+    margin-bottom: 6px;
+  }
+
+  .event img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  /* Dark theme: the ink is near-black navy on a transparent ground, so lift it
+     rather than inverting (inversion would throw the charge scale's hues). */
+  :global(:root[data-theme="dark"]) .event img {
+    filter: brightness(4.2) saturate(0.9);
+  }
+
+  .event-tag {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-label);
+    color: var(--accent);
+  }
+  .event-desc {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    line-height: var(--leading-snug);
+  }
+
+  .events-caption {
+    margin-top: var(--space-3);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+  }
+
+  /* Narrow: stack, so each event stays large enough to read. */
+  @media (max-width: 640px) {
+    .events-row { grid-template-columns: 1fr; gap: var(--space-4); }
+  }
+</style>

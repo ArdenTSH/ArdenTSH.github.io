@@ -11,7 +11,7 @@ In physics you rarely track every degree of freedom. You find the handful of col
 
 The other half of that instinct I already practise: build the constraint in by construction. An equivariant network carries its symmetries in its architecture, so it cannot learn to violate them, and a model whose structure you imposed is a model you can reason about. Encode the constraint, then read out the effective description. That is the lens I bring from physics to safety.
 
-## I build these systems
+## What I build
 
 I take these systems apart from the inside. I have trained and quantised convolutional networks for a published physics experiment, built and quantised graph networks (GATs and GCNs) and am architecting equivariant GNNs from the ground up for edge hardware, fine-tuned language models, and designed scheduling for neural-accelerator inference. That footing lets me treat alignment, interpretability and scale as engineering problems with real internals.
 

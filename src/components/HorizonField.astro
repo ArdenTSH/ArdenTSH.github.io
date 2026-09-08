@@ -1,0 +1,556 @@
+---
+// HorizonField — ambient background for the quantum-gravity page ("Genesis").
+//
+// A BLACK-HOLE HORIZON AGAINST THE SKY, drawn as the interacting degrees of
+// freedom that live on it. The sphere's centre sits off the right edge, so the
+// hole occupies the right of the viewport and its limb arcs down the middle,
+// with open sky and stars to the left. The camera ORBITS the hole, so the hole
+// never moves on screen and never changes size: the surface turns and the sky
+// slides past it.
+//
+// WHY A NET AND NOT A TILING. The count of sites scales with AREA, never with the
+// volume inside, which is the Bekenstein–Hawking result S = A/4 and holography's
+// founding fact: everything the hole contains is written on the boundary. Sites
+// are joined to their nearest neighbours, and it is the LINKS that carry the
+// animation, because a horizon is a strongly interacting system rather than a
+// floor of independent tiles.
+//
+// THREE PROCESSES, all real, all driven by a FIELD evaluated on the sphere so that
+// neighbouring sites move together (independent per-site twinkle reads as static):
+//
+//   1. INFALL AND SCRAMBLING. Something falls in as a faint streak. Where it
+//      crosses, sites light. That excitation spreads as a front, wraps the far
+//      side, and dissolves into a uniform glow that decays: a black hole is the
+//      fastest scrambler in nature, and this is the surface forgetting where the
+//      thing landed.
+//   2. RINGDOWN. Each infall also rings the horizon in its lowest quasinormal
+//      mode, an l=2 harmonic about the impact axis, oscillating and decaying.
+//      That is what gravitational-wave detectors actually measure.
+//   3. HAWKING PAIRS. A pair appears at the horizon; one quantum escapes as a
+//      short fading streak, its partner falls in, and the site it left goes dark
+//      for a while. Correlated pairs are the physics and the darkening site is
+//      the entropy leaving. Sparse on purpose: embers would be decoration.
+//
+// THE SKY IS LENSED. Star positions are deflected by the analytic thin lens, so
+// nothing can appear inside the Einstein radius, images crowd and stretch into
+// arcs against it, and each star's counter-image stacks into a thin ring at the
+// shadow edge. Deliberately NOT the home page's black hole, which owns the
+// ray-tracer: no accretion disc here, no bloom. The disc is black in BOTH
+// themes, because a black hole is black on any ground; only the sky follows it.
+//
+// Pauses off-screen, ~30fps, one settled frame under reduced motion (the bare net,
+// no events), tears down its RAF and observers under Astro navigation. Removing it
+// just drops the background.
+//
+// Knobs: SITES, LINKS_PER_SITE, EVENT_EVERY / FRONT_SPEED (scrambling), RING_*
+// (ringdown), HAWK_EVERY (pairs), CX/CY and RW/RH (placement), READOUT.
+---
+
+<canvas class="horizon-field" aria-hidden="true"></canvas>
+
+<style>
+  .horizon-field {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    /* Orbitable: drag the empty page margins to move the camera around the hole.
+       `pan-y` keeps vertical page scrolling on touch; horizontal drag orbits. */
+    pointer-events: auto;
+    touch-action: pan-y;
+    cursor: grab;
+  }
+  .horizon-field:active {
+    cursor: grabbing;
+  }
+</style>
+
+<script>
+  const canvas = document.querySelector<HTMLCanvasElement>("canvas.horizon-field");
+  const ctx = canvas?.getContext("2d");
+  if (canvas && ctx) {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const TAU = Math.PI * 2;
+
+    // ---- tunables ----------------------------------------------------------
+    const SITES = 6000;          // degrees of freedom on the horizon
+    const LINKS_PER_SITE = 3;    // nearest neighbours each site couples to
+    const CX = 1.02, CY = 0.60;  // sphere centre in viewport units
+    const RW = 0.74, RH = 1.22;  // radius caps as fractions of width / height
+    const SPIN = 0.020;          // rad/sec about the hole's own axis
+    const TILT = 0.38;
+    const SKY = 1600, FOCAL = 1.9;
+    const EINSTEIN = 1.06;       // Einstein radius, in units of the shadow radius
+    const MU_MAX = 8;            // cap on the lensing magnification
+    const RING_BAND = 0.05;      // thickness of the counter-image ring
+    const DRAG = 0.0042, FRICTION = 0.94;
+
+    const EVENT_EVERY = 4.2;     // seconds between infalls
+    const FRONT_SPEED = 0.50;    // rad/sec the scrambling front travels
+    const FRONT_WIDTH = 0.15;    // rad, thickness of the front
+    const MAX_FRONT = 1.00;      // rad, how far one disturbance spreads before it dies
+    const SCRAMBLE_FADE = 3.0;   // sec for the scrambled patch to fade
+    const RING_OMEGA = 6.2;      // rad/sec, quasinormal frequency
+    const RING_TAU = 1.4;        // sec, ringdown decay time
+    const RING_AMP = 0.5;
+    const RING_SIGMA = 0.55;     // rad, how far from the impact the ringing reaches
+    const HAWK_EVERY = 0.75;     // seconds between Hawking pairs
+    const HAWK_BURST = 2;        // quanta emitted at once
+    const READOUT = false;       // one mono line; off = wordless
+
+    // ---- theme colours -----------------------------------------------------
+    type RGB = [number, number, number];
+    const parseRGB = (str: string): RGB => {
+      const s = (str || "").trim();
+      if (s[0] === "#") {
+        let h = s.slice(1);
+        if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+        const n = parseInt(h, 16);
+        return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+      }
+      const m = s.match(/-?\d+(?:\.\d+)?/g);
+      if (m && m.length >= 3) return [+m[0], +m[1], +m[2]];
+      return [128, 128, 128];
+    };
+    let accent: RGB = [77, 155, 230];
+    let ink: RGB = [233, 237, 243];
+    let bg: RGB = [12, 14, 18];
+    let light = false;
+    const lum = (c: RGB) => (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
+    const readColours = () => {
+      const cs = getComputedStyle(document.documentElement);
+      accent = parseRGB(cs.getPropertyValue("--accent"));
+      ink = parseRGB(cs.getPropertyValue("--text-primary"));
+      bg = parseRGB(cs.getPropertyValue("--bg"));
+      light = lum(bg) > 0.5;
+    };
+    readColours();
+    const rgba = (c: RGB, a: number) =>
+      `rgba(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])},${a})`;
+    // The horizon's sites: cream on the black disc in the notebook view, the cool
+    // accent in the dark one. The escaping quanta use the same pale ink in both.
+    const siteCol = (): RGB => (light ? bg : accent);
+    const quantCol = (): RGB => (light ? bg : [226, 232, 240]);
+
+    // ---- the sites and their links -----------------------------------------
+    // Golden-angle spiral: N points spread near-uniformly over the unit sphere, so
+    // the count really is proportional to area and they crowd toward the limb.
+    const ux = new Float32Array(SITES);
+    const uy = new Float32Array(SITES);
+    const uz = new Float32Array(SITES);
+    (() => {
+      const ga = Math.PI * (3 - Math.sqrt(5));
+      for (let i = 0; i < SITES; i++) {
+        const y = 1 - (2 * i + 1) / SITES;
+        const r = Math.sqrt(Math.max(0, 1 - y * y));
+        const th = ga * i;
+        ux[i] = Math.cos(th) * r; uy[i] = y; uz[i] = Math.sin(th) * r;
+      }
+    })();
+
+    // Nearest-neighbour links, built once. The spiral is ordered by y, so spatial
+    // neighbours lie inside a bounded index window and one windowed pass suffices.
+    let edgeA = new Int32Array(0), edgeB = new Int32Array(0), edgeN = 0;
+    (() => {
+      const WIN = 240;
+      const a: number[] = [], b: number[] = [];
+      const bestI = new Int32Array(LINKS_PER_SITE);
+      const bestD = new Float32Array(LINKS_PER_SITE);
+      for (let i = 0; i < SITES; i++) {
+        bestI.fill(-1); bestD.fill(-2);
+        const lo = Math.max(0, i - WIN), hi = Math.min(SITES - 1, i + WIN);
+        for (let j = lo; j <= hi; j++) {
+          if (j === i) continue;
+          const d = ux[i] * ux[j] + uy[i] * uy[j] + uz[i] * uz[j]; // larger = nearer
+          if (d <= bestD[LINKS_PER_SITE - 1]) continue;
+          let k = LINKS_PER_SITE - 1;
+          while (k > 0 && bestD[k - 1] < d) { bestD[k] = bestD[k - 1]; bestI[k] = bestI[k - 1]; k--; }
+          bestD[k] = d; bestI[k] = j;
+        }
+        for (let k = 0; k < LINKS_PER_SITE; k++) {
+          const j = bestI[k];
+          if (j < 0) continue;
+          if (j > i) { a.push(i); b.push(j); }
+        }
+      }
+      edgeA = Int32Array.from(a); edgeB = Int32Array.from(b); edgeN = a.length;
+    })();
+
+    // ---- the sky -----------------------------------------------------------
+    const kx = new Float32Array(SKY), ky = new Float32Array(SKY), kz = new Float32Array(SKY);
+    const smag = new Float32Array(SKY);
+    (() => {
+      const ga = Math.PI * (3 - Math.sqrt(5));
+      let seed = 20260909;
+      const r0 = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+      for (let i = 0; i < SKY; i++) {
+        const y = 1 - (2 * i + 1) / SKY;
+        const r = Math.sqrt(Math.max(0, 1 - y * y));
+        const th = ga * i + r0() * 0.4;
+        kx[i] = Math.cos(th) * r; ky[i] = y; kz[i] = Math.sin(th) * r;
+        const u = r0(); smag[i] = 0.22 + 0.78 * u * u;
+      }
+    })();
+
+    // ---- events -------------------------------------------------------------
+    let rs = 7717;
+    const rnd = () => { rs = (rs * 9301 + 49297) % 233280; return rs / 233280; };
+    const randomDir = (): [number, number, number] => {
+      const z = 2 * rnd() - 1, t = rnd() * TAU, r = Math.sqrt(Math.max(0, 1 - z * z));
+      return [Math.cos(t) * r, Math.sin(t) * r, z];
+    };
+
+    type Infall = { n: [number, number, number]; t0: number };
+    type Pair = { n: [number, number, number]; t0: number };
+    let infalls: Infall[] = [];
+    let pairs: Pair[] = [];
+    let nextEvent = 2.5, nextHawk = 1.5;
+
+    // The excitation at each site, summed over every live process. Correlated in
+    // space by construction, which is what makes the net read as a medium.
+    const field = new Float32Array(SITES);
+    const computeField = (t: number) => {
+      field.fill(0);
+      for (const ev of infalls) {
+        const age = t - ev.t0;
+        if (age < 0) continue;
+        const front = Math.min(age * FRONT_SPEED, MAX_FRONT);
+        const spent = Math.max(0, age - MAX_FRONT / FRONT_SPEED);
+        const decay = Math.max(0, 1 - spent / SCRAMBLE_FADE);
+        if (decay <= 0) continue;
+        const ring = RING_AMP * Math.exp(-age / RING_TAU) * Math.cos(RING_OMEGA * age);
+        // work in cosines so most sites are rejected without an acos
+        const cFront = Math.cos(Math.min(Math.PI, front + 3.2 * FRONT_WIDTH));
+        const cNear = Math.cos(Math.min(Math.PI, 2.2 * RING_SIGMA));
+        const cut = Math.min(cFront, cNear);
+        const s2 = RING_SIGMA * RING_SIGMA;
+        for (let i = 0; i < SITES; i++) {
+          const c = ev.n[0] * ux[i] + ev.n[1] * uy[i] + ev.n[2] * uz[i];
+          if (c < cut) continue;                       // outside this disturbance
+          const th = Math.acos(c < -1 ? -1 : c > 1 ? 1 : c);
+          const d = (th - front) / FRONT_WIDTH;        // 1. the spreading front
+          if (d > -3.2 && d < 3.2) field[i] += Math.exp(-d * d) * decay;
+          if (c >= cNear) {
+            const g = Math.exp(-(th * th) / s2);
+            field[i] += ring * (1.5 * c * c - 0.5) * g; // 2. the l=2 ringdown, local
+            field[i] += 0.20 * decay * g;               // 3. the scrambled patch
+          }
+        }
+      }
+      for (const p of pairs) {                          // the infalling partner
+        const age = t - p.t0;
+        if (age < 0 || age > 2.2) continue;
+        const dark = -1.25 * Math.exp(-age / 0.85);
+        for (let i = 0; i < SITES; i++) {
+          const c = p.n[0] * ux[i] + p.n[1] * uy[i] + p.n[2] * uz[i];
+          if (c > 0.962) field[i] += dark * (c - 0.962) / 0.038;
+        }
+      }
+    };
+
+    // ---- geometry ----------------------------------------------------------
+    let W = 1, H = 1, dpr = 1, cx = 0, cy = 0, R = 1, dot = 1.4;
+    const layout = () => {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      W = canvas.clientWidth; H = canvas.clientHeight;
+      canvas.width = Math.max(1, Math.round(W * dpr));
+      canvas.height = Math.max(1, Math.round(H * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      R = Math.min(W * RW, H * RH);
+      cx = W * CX; cy = H * CY;
+      dot = Math.max(0.7, Math.sqrt((TAU * R * R) / SITES) * 0.125);
+    };
+
+    // ---- camera ------------------------------------------------------------
+    let camYaw = 0, camPitch = 0, velYaw = 0, velPitch = 0;
+    let dragging = false, lastX = 0, lastY = 0;
+    const PITCH_MAX = 1.15;
+    type M3 = Float64Array;
+    const mul = (a: M3, b: M3): M3 => {
+      const o = new Float64Array(9);
+      for (let r = 0; r < 3; r++)
+        for (let c = 0; c < 3; c++)
+          o[r * 3 + c] = a[r * 3] * b[c] + a[r * 3 + 1] * b[3 + c] + a[r * 3 + 2] * b[6 + c];
+      return o as M3;
+    };
+    const rotX = (t: number): M3 => {
+      const c = Math.cos(t), s = Math.sin(t);
+      return new Float64Array([1, 0, 0, 0, c, -s, 0, s, c]) as M3;
+    };
+    const rotY = (t: number): M3 => {
+      const c = Math.cos(t), s = Math.sin(t);
+      return new Float64Array([c, 0, s, 0, 1, 0, -s, 0, c]) as M3;
+    };
+
+    // per-frame scratch: projected site positions, facing cosine, alpha
+    const sxA = new Float32Array(SITES), syA = new Float32Array(SITES);
+    const szA = new Float32Array(SITES), aA = new Float32Array(SITES);
+
+    // ---- drawing -----------------------------------------------------------
+    const draw = (t: number) => {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, W, H);
+
+      const cam = mul(rotX(camPitch), rotY(camYaw));
+      const surf = mul(cam, mul(rotX(TILT), rotY(t * SPIN)));
+      const f = R * FOCAL;
+      const col = siteCol();
+      const qcol = quantCol();
+
+      // ---- sky, lensed by the hole -------------------------------------------
+      // Thin-lens deflection: a star whose true offset from the hole is b appears
+      // at theta = (b + sqrt(b^2 + 4 thE^2)) / 2. Three things follow for free.
+      // Nothing can land inside the Einstein radius, so the shadow clears itself.
+      // Images crowd against that radius and are stretched tangentially by
+      // theta/b while being squeezed radially by dtheta/db, which is what turns
+      // stars into arcs at the rim. And the counter-image on the far side is
+      // real: for a black hole the higher orders stack into an exponentially thin
+      // ring at the shadow edge, so it is drawn into a narrow band there.
+      const starCol: RGB = light ? ink : [226, 232, 240];
+      const thE = R * EINSTEIN, thE2 = thE * thE;
+      const aBase = light ? 0.20 : 0.40;
+      const star = (X: number, Y: number, tan: number, rad: number, mu: number, i: number) => {
+        if (X < -10 || X > W + 10 || Y < -10 || Y > H + 10) return;
+        const a = Math.min(0.9, aBase * smag[i] * Math.min(2.4, Math.sqrt(mu)));
+        if (a < 0.015) return;
+        const sz = (light ? 1.1 : 1.3) * (0.6 + smag[i]);
+        const len = sz * Math.max(1, Math.min(7, tan));
+        const wid = sz * Math.max(0.35, Math.min(1, rad));
+        const dx = X - cx, dy = Y - cy, d = Math.hypot(dx, dy) || 1;
+        const c = dx / d, sn = dy / d;
+        // long axis tangential: the radial direction turned a quarter turn
+        ctx.setTransform(dpr * -sn, dpr * c, -dpr * c, dpr * -sn, dpr * X, dpr * Y);
+        ctx.fillStyle = rgba(starCol, a);
+        ctx.fillRect(-len * 0.5, -wid * 0.5, len, wid);
+      };
+      for (let i = 0; i < SKY; i++) {
+        const z = cam[6] * kx[i] + cam[7] * ky[i] + cam[8] * kz[i];
+        if (z <= 0.18) continue;                       // behind the camera
+        const X0 = cx + ((cam[0] * kx[i] + cam[1] * ky[i] + cam[2] * kz[i]) / z) * f;
+        const Y0 = cy + ((cam[3] * kx[i] + cam[4] * ky[i] + cam[5] * kz[i]) / z) * f;
+        const dx = X0 - cx, dy = Y0 - cy;
+        const b = Math.hypot(dx, dy);
+        if (b < 0.4) continue;
+        const nx = dx / b, ny = dy / b;
+        const root = Math.sqrt(b * b + 4 * thE2);
+        const u = b / thE;
+        const half = (u * u + 2) / (2 * u * Math.sqrt(u * u + 4));
+
+        const tp = 0.5 * (b + root);                   // the primary image
+        star(cx + nx * tp, cy + ny * tp, tp / b, 0.5 * (1 + b / root),
+             Math.min(MU_MAX, half + 0.5), i);
+
+        const muS = half - 0.5;                        // the counter-image
+        if (muS > 0.04) {
+          const tm = 0.5 * (root - b);                 // |theta_-|, inside thE
+          const ring = thE * (1 + RING_BAND * (1 - tm / thE));
+          star(cx - nx * ring, cy - ny * ring, Math.min(7, ring / b), 0.3,
+               Math.min(MU_MAX, muS), i);
+        }
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      // ---- the hole ----------------------------------------------------------
+      ctx.beginPath();
+      ctx.arc(cx, cy, R, 0, TAU);
+      ctx.fillStyle = light ? "rgba(17,17,19,0.96)" : "rgba(0,0,0,0.72)";
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(cx, cy, R, 0, TAU);
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = light ? rgba(bg, 0.30) : rgba(accent, 0.26);
+      ctx.stroke();
+
+      // ---- project the sites -------------------------------------------------
+      computeField(t);
+      for (let i = 0; i < SITES; i++) {
+        const zc = surf[6] * ux[i] + surf[7] * uy[i] + surf[8] * uz[i];
+        szA[i] = zc;
+        if (zc <= 0.02) { aA[i] = 0; continue; }       // far side
+        sxA[i] = cx + (surf[0] * ux[i] + surf[1] * uy[i] + surf[2] * uz[i]) * R;
+        syA[i] = cy + (surf[3] * ux[i] + surf[4] * uy[i] + surf[5] * uz[i]) * R;
+        const face = 0.35 + 0.65 * zc;                 // limb darkening
+        const base = (light ? 0.11 : 0.10) * face;
+        const ex = Math.max(-1, Math.min(1.4, field[i]));
+        aA[i] = Math.max(0, base + ex * (light ? 0.55 : 0.60) * face);
+      }
+
+      // ---- links: the interactions, brightest where something is happening ----
+      // Four alpha bands, one stroke each, so the whole net costs four calls.
+      for (let b = 0; b < 4; b++) {
+        const lo = 0.06 + b * 0.17, hi = lo + 0.17;
+        ctx.beginPath();
+        let any = false;
+        for (let e = 0; e < edgeN; e++) {
+          const i = edgeA[e], j = edgeB[e];
+          if (aA[i] === 0 || aA[j] === 0) continue;
+          const m = (aA[i] + aA[j]) * 0.5;
+          if (m < lo || m >= hi) continue;
+          ctx.moveTo(sxA[i], syA[i]); ctx.lineTo(sxA[j], syA[j]);
+          any = true;
+        }
+        if (!any) continue;
+        ctx.lineWidth = 0.75;
+        ctx.strokeStyle = rgba(col, Math.min(0.5, (lo + 0.085) * 0.5));
+        ctx.stroke();
+      }
+
+      // ---- sites: round, so the surface reads as a medium and not a tiling ----
+      for (let b = 0; b < 5; b++) {
+        const lo = (b / 5) * 0.95, hi = ((b + 1) / 5) * 0.95;
+        ctx.beginPath();
+        let any = false;
+        for (let i = 0; i < SITES; i++) {
+          const a = aA[i];
+          if (a < lo || a >= hi) continue;
+          const r = dot * (0.55 + 0.45 * szA[i]) * (1 + 1.4 * Math.max(0, field[i]));
+          ctx.moveTo(sxA[i] + r, syA[i]);
+          ctx.arc(sxA[i], syA[i], r, 0, TAU);
+          any = true;
+        }
+        if (!any) continue;
+        ctx.fillStyle = rgba(col, Math.min(0.92, (lo + hi) * 0.5));
+        ctx.fill();
+      }
+
+      // ---- the infall streak, before it lands --------------------------------
+      for (const ev of infalls) {
+        const age = t - ev.t0;
+        if (age > 0 || age < -1.4) continue;
+        const p = 1 + age / 1.4;                       // 0 far … 1 at impact
+        const zc = surf[6] * ev.n[0] + surf[7] * ev.n[1] + surf[8] * ev.n[2];
+        if (zc <= 0.02) continue;
+        const X = cx + (surf[0] * ev.n[0] + surf[1] * ev.n[1] + surf[2] * ev.n[2]) * R;
+        const Y = cy + (surf[3] * ev.n[0] + surf[4] * ev.n[1] + surf[5] * ev.n[2]) * R;
+        const dx = X - cx, dy = Y - cy, d = Math.hypot(dx, dy) || 1;
+        const out = (1 - p) * R * 1.5;
+        const x0 = X + (dx / d) * out, y0 = Y + (dy / d) * out;
+        const tail = 0.09 * R * p;
+        ctx.beginPath();
+        ctx.moveTo(x0 + (dx / d) * tail, y0 + (dy / d) * tail);
+        ctx.lineTo(x0, y0);
+        ctx.lineWidth = 1.2;
+        ctx.strokeStyle = rgba(qcol, 0.08 + 0.45 * p * p);
+        ctx.stroke();
+      }
+
+      // ---- the escaping half of each Hawking pair ----------------------------
+      for (const p of pairs) {
+        const age = t - p.t0;
+        if (age < 0 || age > 2.2) continue;
+        const zc = surf[6] * p.n[0] + surf[7] * p.n[1] + surf[8] * p.n[2];
+        if (zc <= 0) continue;
+        const X = cx + (surf[0] * p.n[0] + surf[1] * p.n[1] + surf[2] * p.n[2]) * R;
+        const Y = cy + (surf[3] * p.n[0] + surf[4] * p.n[1] + surf[5] * p.n[2]) * R;
+        const dx = X - cx, dy = Y - cy, d = Math.hypot(dx, dy) || 1;
+        // a quantum leaving the near face would only move toward the camera, so
+        // fade by how close to the limb it is: the escape reads at the silhouette
+        const edgeness = Math.min(1, (1 - zc) / 0.5);
+        const out = age * R * 0.38;
+        const a = Math.max(0, 0.85 * (1 - age / 2.2)) * edgeness;
+        if (a < 0.02) continue;
+        const x0 = X + (dx / d) * out, y0 = Y + (dy / d) * out;
+        const len = 0.075 * R;
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x0 + (dx / d) * len, y0 + (dy / d) * len);
+        ctx.lineWidth = 1.2;
+        ctx.strokeStyle = rgba(qcol, a);
+        ctx.stroke();
+      }
+
+      if (READOUT) {
+        ctx.font = '500 11px ui-monospace, SFMono-Regular, Menlo, monospace';
+        ctx.textAlign = "left";
+        ctx.fillStyle = rgba(ink, light ? 0.40 : 0.30);
+        ctx.fillText("one site, one bit   ·   S = A / 4", 20, H - 20);
+      }
+    };
+
+    // ---- orbiting ----------------------------------------------------------
+    canvas.addEventListener("pointerdown", (e: PointerEvent) => {
+      dragging = true; lastX = e.clientX; lastY = e.clientY;
+      velYaw = velPitch = 0;
+      canvas.setPointerCapture(e.pointerId);
+    });
+    canvas.addEventListener("pointermove", (e: PointerEvent) => {
+      if (!dragging) return;
+      const dx = e.clientX - lastX, dy = e.clientY - lastY;
+      lastX = e.clientX; lastY = e.clientY;
+      velYaw = -dx * DRAG; velPitch = dy * DRAG;
+      camYaw += velYaw;
+      camPitch = Math.max(-PITCH_MAX, Math.min(PITCH_MAX, camPitch + velPitch));
+    });
+    const release = (e: PointerEvent) => {
+      if (!dragging) return;
+      dragging = false;
+      try { canvas.releasePointerCapture(e.pointerId); } catch (err) {}
+    };
+    canvas.addEventListener("pointerup", release);
+    canvas.addEventListener("pointercancel", release);
+
+    // ---- lifecycle ---------------------------------------------------------
+    const animated = !reduce.matches;
+    let raf = 0, last = 0, visible = true;
+    const start = performance.now();
+
+    const step = (t: number) => {
+      if (t > nextEvent) {
+        infalls.push({ n: randomDir(), t0: t + 1.4 });  // the streak leads the impact
+        nextEvent = t + EVENT_EVERY * (0.75 + 0.5 * rnd());
+      }
+      if (t > nextHawk) {
+        const n = 1 + Math.floor(rnd() * HAWK_BURST);
+        for (let k = 0; k < n; k++) pairs.push({ n: randomDir(), t0: t + k * 0.12 });
+        nextHawk = t + HAWK_EVERY * (0.5 + rnd());
+      }
+      const dead = t - (MAX_FRONT / FRONT_SPEED + SCRAMBLE_FADE + 1);
+      infalls = infalls.filter((e) => e.t0 > dead);
+      pairs = pairs.filter((p) => t - p.t0 < 2.2);
+    };
+
+    const frame = (now: number) => {
+      raf = requestAnimationFrame(frame);
+      if (!visible) return;
+      if (now - last < 33) return; // ~30fps
+      last = now;
+      if (!dragging && (velYaw || velPitch)) {          // fling
+        camYaw += velYaw;
+        camPitch = Math.max(-PITCH_MAX, Math.min(PITCH_MAX, camPitch + velPitch));
+        velYaw *= FRICTION; velPitch *= FRICTION;
+        if (Math.abs(velYaw) < 1e-5) velYaw = 0;
+        if (Math.abs(velPitch) < 1e-5) velPitch = 0;
+      }
+      const t = (now - start) / 1000;
+      step(t);
+      draw(t);
+    };
+
+    const drawStatic = () => { infalls = []; pairs = []; draw(0); };
+
+    layout();
+    window.addEventListener("resize", () => { layout(); if (!animated) drawStatic(); });
+
+    let io: IntersectionObserver | null = null;
+    if (animated) {
+      raf = requestAnimationFrame(frame);
+      io = new IntersectionObserver((es) => { visible = es[0].isIntersecting; });
+      io.observe(canvas);
+    } else {
+      drawStatic();
+      canvas.addEventListener("pointermove", () => { if (dragging) drawStatic(); });
+    }
+
+    const themeObserver = new MutationObserver(() => { readColours(); if (!animated) drawStatic(); });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+    const cleanup = () => {
+      cancelAnimationFrame(raf);
+      io?.disconnect();
+      themeObserver.disconnect();
+      document.removeEventListener("astro:before-swap", cleanup);
+    };
+    document.addEventListener("astro:before-swap", cleanup);
+  }
+</script>

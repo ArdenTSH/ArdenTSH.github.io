@@ -1,0 +1,174 @@
+---
+// <EnergyChart> — energy against latency per inference, the paper's Figure 3
+// redrawn from its own numbers (arXiv:2603.24607, Tables 2 and 3) as inline SVG
+// in the site's palette. Four models per device; the Edge TPU figures are the
+// faster of that model's PTQ and QAT builds, as in the paper.
+//
+// The point of the figure is that the three device classes occupy three
+// separate regions, so device is carried by shape and the one device that is
+// the subject of the page carries the accent. Labels sit next to their clusters
+// instead of in a legend box. No axis is linear: both are decades.
+//
+// Static, themed from tokens, no script and nothing to animate.
+
+const DEVICES = [
+  {
+    key: "cpu",
+    label: "CPU",
+    shape: "circle" as const,
+    // [latency ms, energy mJ] for ResNet-50V2, DenseNet-169, EfficientNetV2B0, InceptionV3
+    points: [[38.724, 10842.72], [66.445, 18604.6], [19.008, 5322.24], [40.978, 11473.84]],
+    at: [16, 11000],
+    anchor: "end",
+  },
+  {
+    key: "gpu",
+    label: "GPU",
+    shape: "square" as const,
+    points: [[2.819, 845.7], [7.709, 2312.7], [4.347, 1304.1], [2.123, 636.9]],
+    at: [9.6, 1250],
+    anchor: "start",
+  },
+  {
+    key: "tpu",
+    label: "Edge TPU",
+    shape: "triangle" as const,
+    points: [[39.025, 78.05], [20.591, 41.18], [12.324, 24.65], [39.854, 79.71]],
+    at: [10.4, 40],
+    anchor: "end",
+  },
+];
+
+const W = 600, H = 380, L = 58, R = 16, T = 18, B = 44;
+const XD = [1.8, 85], YD = [18, 26000];
+const lg = Math.log10;
+const x = (v: number) => L + ((lg(v) - lg(XD[0])) / (lg(XD[1]) - lg(XD[0]))) * (W - L - R);
+const y = (v: number) => H - B - ((lg(v) - lg(YD[0])) / (lg(YD[1]) - lg(YD[0]))) * (H - B - T);
+
+const XT = [2, 5, 10, 20, 50];
+const YT: [number, string][] = [[100, "10²"], [1000, "10³"], [10000, "10⁴"]];
+
+const marker = (shape: string) =>
+  shape === "circle"
+    ? '<circle r="5" />'
+    : shape === "square"
+      ? '<rect x="-4.5" y="-4.5" width="9" height="9" />'
+      : '<path d="M0,-5.6 L5,3.6 L-5,3.6 Z" />';
+---
+
+<figure class="chart">
+  <svg
+    viewBox={`0 0 ${W} ${H}`}
+    role="img"
+    aria-label="Energy against latency per inference, on logarithmic axes. Four convolutional models are plotted on each of three devices. The CPU points sit highest, around 5,000 to 19,000 millijoules. The GPU points sit lower and further left, around 600 to 2,300 millijoules. The Edge TPU points sit far below both, around 25 to 80 millijoules, at latencies comparable to the CPU."
+  >
+    {/* Horizontal decade rules */}
+    {YT.map(([v]) => (
+      <line class="grid" x1={L} x2={W - R} y1={y(v)} y2={y(v)} />
+    ))}
+
+    {/* Axes */}
+    <line class="axis" x1={L} x2={W - R} y1={H - B} y2={H - B} />
+    <line class="axis" x1={L} x2={L} y1={T} y2={H - B} />
+
+    {/* Ticks */}
+    {XT.map((v) => (
+      <>
+        <line class="tick" x1={x(v)} x2={x(v)} y1={H - B} y2={H - B + 4} />
+        <text class="tick-label" x={x(v)} y={H - B + 17} text-anchor="middle">{v}</text>
+      </>
+    ))}
+    {YT.map(([v, lab]) => (
+      <text class="tick-label" x={L - 9} y={y(v) + 4} text-anchor="end">{lab}</text>
+    ))}
+
+    {/* Points */}
+    {DEVICES.map((d) => (
+      <g class={`mk mk--${d.key}`}>
+        {d.points.map(([lat, en]) => (
+          <g transform={`translate(${x(lat)},${y(en)})`} set:html={marker(d.shape)} />
+        ))}
+      </g>
+    ))}
+
+    {/* Direct labels, in place of a legend */}
+    {DEVICES.map((d) => (
+      <text
+        class={`series-label series-label--${d.key}`}
+        x={x(d.at[0])}
+        y={y(d.at[1])}
+        text-anchor={d.anchor}>{d.label}</text>
+    ))}
+
+    {/* Axis titles */}
+    <text class="axis-title" x={L + (W - L - R) / 2} y={H - 6} text-anchor="middle">
+      latency per inference (ms)
+    </text>
+    <text
+      class="axis-title"
+      transform={`translate(13,${T + (H - B - T) / 2}) rotate(-90)`}
+      text-anchor="middle">energy per inference (mJ)</text
+    >
+  </svg>
+
+  <figcaption class="chart-caption">
+    Energy is a proxy, thermal design power times latency, so it reads as a
+    worst case. Four models on each device; the Edge TPU points are the faster of
+    each model's two builds.
+  </figcaption>
+</figure>
+
+<style>
+  .chart {
+    margin: var(--space-4) 0 0;
+    max-width: var(--measure);
+  }
+  .chart svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+  }
+
+  .grid {
+    stroke: var(--border);
+    stroke-width: 1;
+    stroke-dasharray: 2 4;
+  }
+  .axis {
+    stroke: var(--border-strong);
+    stroke-width: 1;
+  }
+  .tick { stroke: var(--border-strong); stroke-width: 1; }
+
+  .tick-label,
+  .axis-title,
+  .series-label {
+    font-family: var(--font-mono);
+    letter-spacing: var(--tracking-label);
+    fill: var(--text-secondary);
+  }
+  .tick-label { font-size: 11px; }
+  .axis-title { font-size: 11px; fill: var(--text-faint); }
+  .series-label { font-size: 12px; }
+  .series-label--tpu { fill: var(--accent); }
+
+  /* Device is carried by shape; only the Edge TPU is filled, because it is the
+     one the page is about. */
+  .mk--cpu :global(*),
+  .mk--gpu :global(*) {
+    fill: none;
+    stroke: var(--text-secondary);
+    stroke-width: 1.4;
+  }
+  .mk--tpu :global(*) {
+    fill: var(--accent);
+    stroke: none;
+  }
+
+  .chart-caption {
+    margin-top: var(--space-3);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+  }
+</style>

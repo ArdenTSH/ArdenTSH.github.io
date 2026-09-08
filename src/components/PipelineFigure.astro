@@ -1,0 +1,171 @@
+---
+// <PipelineFigure> — the two-stage hybrid PSO + DFT workflow, the web version of
+// the paper's Figure 2. Plain boxes and SVG arrows drawn from the theme tokens,
+// so it follows the notebook/dark toggle and stays sharp at any zoom. No image
+// asset, no canvas, no library, and nothing to animate.
+//
+// Flow: initial swarm → Phase 1 (PSO search, GFN2-xTB) → g_best → Phase 2
+// (LBFGS relaxation, PBE+VV10) → refined geometry. The g_best label rides the
+// middle arrow, since it is what passes between the two stages.
+//
+// Layout is a column on narrow screens (arrows rotate) and a row from 900px up.
+---
+
+<figure class="pipeline">
+  <div class="pipeline-flow">
+    <div class="node node--io">
+      <span class="node-title">Initial swarm</span>
+    </div>
+
+    <div class="arrow" aria-hidden="true">
+      <svg class="arrow-glyph" viewBox="0 0 40 12"><line x1="0" y1="6" x2="31" y2="6"></line><path d="M31 2 L39 6 L31 10 Z"></path></svg>
+    </div>
+
+    <div class="node node--phase">
+      <span class="node-tag">Phase 1</span>
+      <span class="node-title">PSO search</span>
+      <span class="node-meta">GFN2-xTB · tblite</span>
+    </div>
+
+    <div class="arrow arrow--labelled" aria-hidden="true">
+      <span class="arrow-label">g_best</span>
+      <svg class="arrow-glyph" viewBox="0 0 40 12"><line x1="0" y1="6" x2="31" y2="6"></line><path d="M31 2 L39 6 L31 10 Z"></path></svg>
+    </div>
+
+    <div class="node node--phase">
+      <span class="node-tag">Phase 2</span>
+      <span class="node-title">LBFGS relaxation</span>
+      <span class="node-meta">PBE+VV10 · gpu4pyscf</span>
+    </div>
+
+    <div class="arrow" aria-hidden="true">
+      <svg class="arrow-glyph" viewBox="0 0 40 12"><line x1="0" y1="6" x2="31" y2="6"></line><path d="M31 2 L39 6 L31 10 Z"></path></svg>
+    </div>
+
+    <div class="node node--io">
+      <span class="node-title">Refined geometry</span>
+    </div>
+  </div>
+
+  <figcaption class="pipeline-caption">
+    The two-stage workflow: an initial swarm enters a PSO search scored by
+    GFN2-xTB, and its best structure alone is relaxed with PBE+VV10.
+  </figcaption>
+</figure>
+
+<style>
+  .pipeline {
+    margin: var(--space-4) 0 0;
+    max-width: var(--measure);
+  }
+
+  .pipeline-flow {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+  }
+
+  /* ── Nodes ─────────────────────────────────────────────────────────────── */
+  .node {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--space-2) var(--space-3);
+    border: var(--hairline) solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    /* Border-only: no fill, so the boxes sit on the island in either theme. */
+    background: none;
+    text-align: center;
+  }
+  /* Input and output: the things outside the workflow, held quieter. */
+  .node--io { border-style: dashed; }
+  .node--io .node-title { color: var(--text-secondary); }
+  /* The two computed stages carry the single accent, used as an indicator. */
+  .node--phase { border-color: var(--accent-line); }
+
+  .node-tag {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-label);
+    color: var(--accent);
+  }
+  .node-title {
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+  }
+  .node-meta {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-label);
+    color: var(--text-secondary);
+  }
+
+  /* ── Arrows ────────────────────────────────────────────────────────────── */
+  .arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    color: var(--text-faint);
+  }
+  .arrow-glyph {
+    width: 26px;
+    height: 10px;
+    transform: rotate(90deg);       /* column layout: pointing down */
+    overflow: visible;
+  }
+  .arrow-glyph line {
+    stroke: currentColor;
+    stroke-width: 1.25;
+  }
+  .arrow-glyph path { fill: currentColor; }
+  .arrow-label {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-label);
+    color: var(--text-secondary);
+  }
+
+  .pipeline-caption {
+    margin-top: var(--space-3);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+  }
+
+  /* ── Wide: lay the stages out left to right ────────────────────────────── */
+  @media (min-width: 900px) {
+    .pipeline-flow {
+      flex-direction: row;
+      align-items: stretch;
+      gap: var(--space-1);
+      /* Safety net: a narrow island scrolls the diagram rather than crushing it. */
+      overflow-x: auto;
+    }
+    .node {
+      justify-content: center;
+      padding: var(--space-2);
+      min-width: 0;
+    }
+    /* The stages size to their tooling line, which never wraps; the input and
+       output boxes take up whatever slack is left. */
+    .node-meta { white-space: nowrap; }
+    .node--phase { flex: 0 1 auto; }
+    .node--io { flex: 1 1 0; }
+    .arrow {
+      position: relative;
+      flex: 0 0 auto;
+    }
+    /* The labelled arrow is wider than its glyph, so it buys its own margin. */
+    .arrow--labelled { padding-inline: var(--space-2); }
+    .arrow-glyph { transform: none; }
+    /* Out of flow, so every arrowhead sits on the same centreline. */
+    .arrow-label {
+      position: absolute;
+      bottom: calc(50% + 7px);
+      left: 50%;
+      transform: translateX(-50%);
+      white-space: nowrap;
+    }
+  }
+</style>
