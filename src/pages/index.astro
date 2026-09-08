@@ -14,8 +14,8 @@ import { researchAreas, site, eden } from "../config/site";
   <Island as="header">
     <p class="eyebrow">{site.eyebrow}</p>
     <h1>{site.name}</h1>
-    <p class="lead">{site.tagline}</p>
-    <p class="text-secondary intro">{site.intro}</p>
+    {site.tagline && <p class="lead">{site.tagline}</p>}
+    <p class="text-secondary intro" set:html={site.intro}></p>
   </Island>
 
   <a class="card-link build-link" href="/eden">

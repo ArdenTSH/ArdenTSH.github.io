@@ -1,0 +1,224 @@
+---
+// <ClusterViewer> — an orbit-able ball-and-stick view of one molecular cluster,
+// read from a plain .xyz file in public/ at BUILD time (coordinates + bonds are
+// baked into data attributes, so there's no runtime fetch). Canvas 2D with a
+// hand-rolled projection, like the page backgrounds: no Three.js, no dependency.
+//
+// Contract (same as every animation on the site): draws only while on screen
+// (IntersectionObserver), ~30fps gate, honours prefers-reduced-motion (a single
+// static frame, still draggable), re-reads theme colours on data-theme changes,
+// and is removable: delete the component and the page simply loses the figure.
+//
+//   <ClusterViewer src="/structures/C20_fullerene.xyz" label="C₂₀ fullerene" />
+//
+// `src` is the public URL of the .xyz (also offered as the download link);
+// `bond` is the bonding cutoff in Å (C–C single/aromatic ≈ 1.4–1.5, so 1.75 is safe).
+import fs from "node:fs";
+import path from "node:path";
+
+interface Props {
+  src: string;
+  label: string;
+  bond?: number;
+}
+const { src, label, bond = 1.75 } = Astro.props;
+
+const file = path.join(process.cwd(), "public", src);
+const lines = fs.readFileSync(file, "utf-8").split("\n");
+const n = parseInt(lines[0].trim(), 10);
+const raw = lines.slice(2, 2 + n).map((l) => {
+  const s = l.trim().split(/\s+/);
+  return [parseFloat(s[1]), parseFloat(s[2]), parseFloat(s[3])];
+});
+// Centre on the centroid so the cluster spins about itself.
+const c = raw.reduce((a, p) => [a[0] + p[0], a[1] + p[1], a[2] + p[2]], [0, 0, 0]).map((v) => v / n);
+const atoms = raw.map((p) => [p[0] - c[0], p[1] - c[1], p[2] - c[2]].map((v) => +v.toFixed(4)));
+const bonds: number[][] = [];
+for (let i = 0; i < n; i++)
+  for (let j = i + 1; j < n; j++) {
+    const d = Math.hypot(atoms[i][0] - atoms[j][0], atoms[i][1] - atoms[j][1], atoms[i][2] - atoms[j][2]);
+    if (d < bond) bonds.push([i, j]);
+  }
+const radius = Math.max(...atoms.map((p) => Math.hypot(p[0], p[1], p[2])));
+---
+
+<figure class="cluster-viewer" data-atoms={JSON.stringify(atoms)} data-bonds={JSON.stringify(bonds)} data-radius={radius.toFixed(4)}>
+  <canvas class="cluster-canvas" role="img" aria-label={`${label}: ${n} atoms, ${bonds.length} bonds. Drag to rotate.`}></canvas>
+  <figcaption class="cluster-caption">
+    <span class="cluster-label">{label}</span>
+    <span class="cluster-meta">{n} atoms · {bonds.length} bonds · drag to rotate</span>
+    <a class="cluster-download" href={src} download>Download .xyz</a>
+  </figcaption>
+</figure>
+
+<style>
+  .cluster-viewer {
+    margin: var(--space-4) 0 0;
+    max-width: var(--measure);
+  }
+  .cluster-canvas {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    border: var(--hairline) solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    cursor: grab;
+    touch-action: none;
+  }
+  .cluster-canvas:active { cursor: grabbing; }
+  .cluster-caption {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-3);
+    align-items: baseline;
+    margin-top: var(--space-2);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-label);
+    color: var(--text-secondary);
+  }
+  .cluster-label { color: var(--text-primary); }
+  .cluster-download { margin-left: auto; }
+</style>
+
+<script>
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+  document.querySelectorAll<HTMLElement>(".cluster-viewer").forEach((root) => {
+    const canvas = root.querySelector<HTMLCanvasElement>(".cluster-canvas");
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const atoms: number[][] = JSON.parse(root.dataset.atoms || "[]");
+    const bonds: number[][] = JSON.parse(root.dataset.bonds || "[]");
+    const R = parseFloat(root.dataset.radius || "1") || 1;
+
+    // ── State ──────────────────────────────────────────────────────────────
+    let yaw = 0.55, pitch = 0.32;
+    const SPIN = 0.0045;          // rad per frame at ~30fps
+    const CAM = 3.6;              // camera distance in units of cluster radius
+    let W = 0, H = 0, dpr = 1;
+    let visible = false, dragging = false, dirty = true;
+    let last = 0;
+
+    // ── Theme colours (re-read when data-theme flips) ──────────────────────
+    let ink = "#1a1a1a", muted = "#666", faint = "#aaa", paper = "#fff";
+    const readColours = () => {
+      const cs = getComputedStyle(document.documentElement);
+      ink = (cs.getPropertyValue("--text-primary") || ink).trim();
+      muted = (cs.getPropertyValue("--text-secondary") || muted).trim();
+      faint = (cs.getPropertyValue("--border-strong") || faint).trim();
+      paper = (cs.getPropertyValue("--surface") || paper).trim();
+      dirty = true;
+    };
+    readColours();
+    new MutationObserver(readColours).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+    const resize = () => {
+      const rect = canvas.getBoundingClientRect();
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      W = Math.max(1, Math.round(rect.width * dpr));
+      H = Math.max(1, Math.round(rect.height * dpr));
+      if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
+      dirty = true;
+    };
+    new ResizeObserver(resize).observe(canvas);
+
+    // ── Projection: yaw about y, pitch about x, then a mild perspective ──────
+    const project = () => {
+      const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+      const scale = (Math.min(W, H) * 0.42) / R;
+      return atoms.map(([x, y, z]) => {
+        const x1 = x * cy + z * sy, z1 = -x * sy + z * cy;
+        const y2 = y * cp - z1 * sp, z2 = y * sp + z1 * cp;
+        const depth = z2 / R;                      // -1 (far) … +1 (near)
+        const k = CAM / (CAM - depth);             // perspective factor
+        return { X: W / 2 + x1 * scale * k, Y: H / 2 - y2 * scale * k, d: depth, k };
+      });
+    };
+
+    const draw = () => {
+      dirty = false;
+      const P = project();
+      ctx.clearRect(0, 0, W, H);
+      const base = (Math.min(W, H) * 0.42) / R;
+      const atomR = base * 0.19;                    // ball radius in px (per unit k)
+
+      // Bonds, far to near, thinner and fainter with depth.
+      ctx.lineCap = "round";
+      const order = bonds.map((b, i) => ({ i, d: (P[b[0]].d + P[b[1]].d) / 2 })).sort((a, b) => a.d - b.d);
+      for (const { i } of order) {
+        const [a, b] = bonds[i];
+        const t = (order.length ? 0 : 0) + ((P[a].d + P[b].d) / 2 + 1) / 2;   // 0 far … 1 near
+        ctx.strokeStyle = t < 0.5 ? faint : muted;
+        ctx.globalAlpha = 0.45 + 0.55 * t;
+        ctx.lineWidth = base * (0.05 + 0.04 * t);
+        ctx.beginPath(); ctx.moveTo(P[a].X, P[a].Y); ctx.lineTo(P[b].X, P[b].Y); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+
+      // Atoms, far to near: paper-coloured disc with an ink rim, so near atoms
+      // cleanly occlude the bonds and atoms behind them.
+      const idx = P.map((_, i) => i).sort((a, b) => P[a].d - P[b].d);
+      for (const i of idx) {
+        const p = P[i];
+        const t = (p.d + 1) / 2;
+        const r = atomR * p.k;
+        ctx.beginPath(); ctx.arc(p.X, p.Y, r, 0, Math.PI * 2);
+        ctx.fillStyle = paper; ctx.fill();
+        ctx.globalAlpha = 0.55 + 0.45 * t;
+        ctx.lineWidth = base * 0.035;
+        ctx.strokeStyle = ink; ctx.stroke();
+        // graphite fill: a darker inner disc for the near atoms
+        ctx.globalAlpha = 0.08 + 0.32 * t;
+        ctx.fillStyle = ink; ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    };
+
+    // ── Loop: only while visible; static under reduced motion ─────────────
+    const tick = (now: number) => {
+      if (!visible) return;
+      if (now - last >= 33) {
+        last = now;
+        if (!dragging && !reduce.matches) { yaw += SPIN; dirty = true; }
+        if (dirty) draw();
+      }
+      requestAnimationFrame(tick);
+    };
+    const io = new IntersectionObserver((entries) => {
+      const was = visible;
+      visible = entries.some((e) => e.isIntersecting) && !document.hidden;
+      if (visible && !was) requestAnimationFrame(tick);
+    }, { threshold: 0.05 });
+    io.observe(canvas);
+    document.addEventListener("visibilitychange", () => {
+      const was = visible;
+      visible = !document.hidden && visible;
+      if (!was && !document.hidden) io.takeRecords(), (visible = true), requestAnimationFrame(tick);
+    });
+    reduce.addEventListener("change", () => { dirty = true; });
+
+    // ── Drag to rotate (pointer capture; works with touch too) ───────────
+    let px = 0, py = 0;
+    canvas.addEventListener("pointerdown", (e) => {
+      dragging = true; px = e.clientX; py = e.clientY;
+      canvas.setPointerCapture(e.pointerId);
+    });
+    canvas.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      yaw += (e.clientX - px) * 0.012;
+      pitch = Math.max(-1.4, Math.min(1.4, pitch + (e.clientY - py) * 0.012));
+      px = e.clientX; py = e.clientY; dirty = true;
+      if (reduce.matches || !visible) draw();     // static mode still responds to drag
+    });
+    const up = () => { dragging = false; };
+    canvas.addEventListener("pointerup", up);
+    canvas.addEventListener("pointercancel", up);
+
+    resize();
+    draw();
+  });
+</script>

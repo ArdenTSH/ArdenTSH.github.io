@@ -3,16 +3,22 @@ title: "Research & experience"
 order: 2
 ---
 
-### CCP5 research fellow — theoretical & computational materials physics
+### Cosmos Institute grant (with FIRE): grounded verification benchmark
+Eden / independent · London, UK · Aug 2026 – present
+
+- Built a benchmark on an adjudicated dispute over an autonomous laboratory's synthesis claims, with expert-derived per-claim targets and a public scorer that evaluates outside submissions. [Code](https://github.com/ArdenTSH/Verification-layer-A-lab)
+- Designed a verification layer in which a model proposes checks and an independent kernel re-establishes every verdict; reached 55/55 stage-one targets against 41 for the strongest unlayered baseline.
+
+### CCP5 research fellow: theoretical & computational materials physics
 KCL, De Tomas Group · London, UK · Dec 2025 – present
 
 - Awarded the EPSRC-funded CCP5 (Condensed Matter Simulation Project) bursary for a full-time summer extension.
 - Developed and characterised a hybrid PSO–DFT (GFN2-xTB / PBE+VV10) workflow for carbon-nanocluster structure prediction; benchmarked inertias, recovered C₃–C₂₀ isomers and converged a C₂₀ fullerene.
 - Built HPC pipelines in Bash for GPU-accelerated optimiser tuning; authored READMEs for reproducibility.
-- Co-authoring a manuscript on this work; submission targeted for end of July 2026.
-- Curated benchmark datasets to validate against GAP-20 / AIRSS, bridging *ab initio* accuracy with ML-IP scalability.
+- First-authoring a manuscript on this work; submission targeted for September 2026.
+- Curated benchmark datasets to validate against GAP-20 / DFT, bridging *ab initio* accuracy with ML-IP scalability.
 - Extending the work to compare simulated IR spectra against astrophysical molecular-cloud observations.
-- Extending PSO to oxygen/sulfur polymers and initiating interpretability work on random-forest feature attribution; automated kinetic-state discovery via PySoftK. Supervised by Dr Carla De Tomas (Senior Lecturer in Net Zero).
+- Working on PSO for C₈O₂ and C₈S₂, and initiating interpretability work on random-forest feature attribution; automated kinetic-state discovery via PySoftK. Supervised by Dr Carla De Tomas (Senior Lecturer in Net Zero).
 
 ### Particle physics & machine learning research assistant
 KCL, Experimental Particle and Astroparticle group (EPAP) · London, UK · Oct 2025 – present
@@ -20,8 +26,9 @@ KCL, Experimental Particle and Astroparticle group (EPAP) · London, UK · Oct 2
 - Co-authored *Physics at the Edge: benchmarking quantisation techniques and the Edge TPU for neutrino interaction recognition* ([arXiv:2603.24607](https://arxiv.org/abs/2603.24607), submitted to EPJC).
 - Presented a poster at the AI for Science Conference, Alan Turing Institute, March 2026.
 - Leading work (build, train, quantise) on GNNs (GATs & GCNs) and architecting EGNNs from the ground up to run on the Edge.
-- Running reconstruction and clustering with Pandora in LArSoft; writing ROOT feature-vector (set) files as inputs for the group's set-transformer models. Developing proficiency in C++, LArSoft, and ROOT.
-- Contributing to mechanistic-interpretability work on set-transformer and graph-attention models.
+- Running reconstruction and clustering with Pandora; writing ROOT files for the group's set-transformer models.
+- Building mechanistic-interpretability work on set-transformer and graph-attention models.
+- Benchmarking quantum-machine-learning circuits across quantum hardware architectures on accuracy, latency and energy cost, analysing all-to-all circuit compilation.
 - Trained and quantised CNNs (PTQ & QAT) on GENIE-generated LArTPC neutrino datasets to support low-latency, sustainable fast triggers. Supervised by Dr Stefano Vergani (Postdoctoral Research Associate).
 
 ### Photovoltaics undergraduate research assistant
@@ -37,10 +44,10 @@ HKUST, Industrial Engineering and Decision Analytics (IEDA) · Hong Kong · Jul 
 - Studied transformer theory and curated datasets to fine-tune LLMs with MLX, testing physical-derivation recovery.
 - Interviewed published researchers on AI safety. Supervised by Dr Jiheng Zhang (Professor of IEDA & Mathematics).
 
-### Quantum chemistry — King's undergraduate research fellow (KURF)
+### Quantum chemistry: King's undergraduate research fellow (KURF)
 KCL, Physical Chemistry (Sanz) Group · London, UK · Jun 2025 – Jul 2025
 
-- Identified the lowest-energy isomer of the limonene–(SO₂)₂ cluster by rotational spectroscopy.
+- Identified the lowest-energy isomer of the limonene–(SO₂)₂ cluster by FT-CPMW rotational spectroscopy.
 - Ran DFT on the HPC via CLI; performed spectral assignment and NCI / NBO chemical analysis.
 - Awarded a paid research fellowship. Supervised by Dr Maria Eugenia Sanz (Reader in Physical Chemistry).
 

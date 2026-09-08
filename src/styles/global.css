@@ -145,6 +145,7 @@
   --radius-md:    8px;    /* island default */
   --radius-lg:    12px;   /* large island */
   --radius-pill:  999px;
+  --radius-dock:  16px;   /* the dock: softened rectangle rather than a full pill */
   --radius-round: 50%;
 
   /* ---- Borders --------------------------------------------------------- */
@@ -823,7 +824,7 @@ small { font-size: var(--text-sm); color: var(--text-secondary); }
   padding: var(--space-2);
   background-color: color-mix(in srgb, var(--surface-raised) 96%, transparent);
   border: var(--hairline) solid var(--border-strong);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-dock);
   box-shadow: var(--shadow-dock);
   -webkit-backdrop-filter: saturate(120%);
   backdrop-filter: saturate(120%);

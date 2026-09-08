@@ -19,6 +19,13 @@ import NeutrinoField from "../../components/NeutrinoField.astro";
 // AI-safety background: the RG coarse-graining staircase replaces the old SAEField.
 // SAEField.astro is kept in the repo (unused) so it's a one-line swap to restore.
 import RgStaircase from "../../components/RgStaircase.astro";
+// Interactive cluster figure (materials page). A Markdown paragraph reading
+// exactly `[[viewer:KEY]]` is swapped for <ClusterViewer> with the KEY's config
+// below, so the write-up stays plain Markdown and the figure stays removable.
+import ClusterViewer from "../../components/ClusterViewer.astro";
+const VIEWERS: Record<string, { src: string; label: string }> = {
+  c20: { src: "/structures/C20_fullerene.xyz", label: "C₂₀ fullerene cage, the swarm's best structure" },
+};
 import { Icon } from "astro-icon/components";
 import { getCollection } from "astro:content";
 import { researchAreas } from "../../config/site";
@@ -69,13 +76,29 @@ for (const line of raw.split("\n")) {
 }
 if (cur) blocks.push(cur);
 
+// Each island's HTML is split around viewer markers into segments, so a figure
+// can sit between paragraphs of the same island.
+type Segment = { kind: "html"; html: string } | { kind: "viewer"; key: string };
+const MARK = /<p>\[\[viewer:([a-z0-9-]+)\]\]<\/p>/g;
+const segment = (html: string): Segment[] => {
+  const out: Segment[] = [];
+  let i = 0;
+  for (const m of html.matchAll(MARK)) {
+    if (m.index! > i) out.push({ kind: "html", html: html.slice(i, m.index) });
+    if (VIEWERS[m[1]]) out.push({ kind: "viewer", key: m[1] });
+    i = m.index! + m[0].length;
+  }
+  if (i < html.length) out.push({ kind: "html", html: html.slice(i) });
+  return out;
+};
+
 const islands = await Promise.all(
   blocks
     .filter((b) => b.lines.join("").trim().length > 0)
     .map(async (b) => ({
       cls:
         b.level === 2 ? "research-section" : b.level === 3 ? "research-part" : "research-intro",
-      html: await toHtml(b.lines.join("\n")),
+      segments: segment(await toHtml(b.lines.join("\n"))),
     })),
 );
 ---
@@ -84,7 +107,7 @@ const islands = await Promise.all(
   {/* The computational page runs a live PSO over a drifting landscape behind the islands. */}
   {area.slug === "materials" && <PsoField slot="background" />}
   {area.slug === "neutrino" && <NeutrinoField slot="background" />}
-  {/* Cosmology: intentionally no background; its cosmic-web scene moved to /eden. */}
+  {/* Gravity (formerly cosmology): no background yet; the cosmic-web scene moved to /eden. */}
   {/* AI safety: a real-space RG coarse-graining staircase — many microscopic
       degrees of freedom on the left collapse into a few collective ones on the right. */}
   {area.slug === "ai" && <RgStaircase slot="background" />}
@@ -101,7 +124,11 @@ const islands = await Promise.all(
     islands.length > 0 ? (
       islands.map((b) => (
         <Island>
-          <div class={b.cls} set:html={b.html} />
+          <div class={b.cls}>
+            {b.segments.map((s) =>
+              s.kind === "html" ? <Fragment set:html={s.html} /> : <ClusterViewer {...VIEWERS[s.key]} />,
+            )}
+          </div>
         </Island>
       ))
     ) : (
@@ -172,5 +199,5 @@ const islands = await Promise.all(
   .research-part :global(li)::marker { color: var(--text-faint); }
   .research-part :global(strong) { color: var(--text-primary); }
   /* Placeholder equation / data blocks read as the mono "instrument" voice. */
-  .research-part :global(pre) { margin-top: var(--space-4); }
+  .research-part :global(pre) { margin-top: var(--space-4); overflow-x: auto; }
 </style>

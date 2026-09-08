@@ -20,7 +20,7 @@ import { site } from "../config/site";
     <div class="gw-island">
       <p class="eyebrow">{site.eyebrow}</p>
       <h1>{site.name}</h1>
-      <p class="lead">{site.tagline}</p>
+      {site.tagline && <p class="lead">{site.tagline}</p>}
     </div>
   </div>
 

@@ -261,6 +261,25 @@ const isExternal = (href: string) => href.startsWith("http");
     .research-link:focus-visible {
       border-color: var(--accent-line);
     }
+    /* The Research toggle folds away as the pills unfold (same duration and
+       easing as their max-width), so the four areas take its place in the bar
+       rather than sitting beside it. It stays in the DOM and tab order; Escape
+       closes and refocuses it, at which point it unfolds again. */
+    .dock-research > .dock-item {
+      transition:
+        width var(--dur-base) var(--ease-emphasis),
+        opacity var(--dur-base) var(--ease-emphasis),
+        color var(--dur-fast) var(--ease-standard),
+        background-color var(--dur-fast) var(--ease-standard),
+        border-color var(--dur-fast) var(--ease-standard);
+    }
+    .dock-research[data-open] > .dock-item {
+      width: 0;
+      min-width: 0;
+      opacity: 0;
+      border-color: transparent;
+      pointer-events: none;
+    }
   }
 </style>
 
@@ -268,12 +287,22 @@ const isExternal = (href: string) => href.startsWith("http");
   // Each Research/Contact disclosure uses aria-expanded as its only state; CSS
   // reveals the inline pills (Research, wide) or the popover from it. We set it
   // on hover (pointer devices), click (touch / intentional dismiss), and close
-  // on Escape, focus-leave and outside-click — so visual and ARIA state agree.
+  // on Escape, focus-leave and outside-click, so visual and ARIA state agree.
+  //
+  // Research is STICKY: once hovered open, the pulled-apart bar stays open while
+  // the pointer is anywhere over the dock (so moving from the four areas onto
+  // Eden / CV / Contact doesn't collapse the bar and shift the icons under the
+  // cursor). It closes, with the same animation, when the pointer leaves the
+  // whole dock or when anything outside the group is clicked (document click).
+  // Contact keeps the plain hover-in/hover-out behaviour: it's a popover above
+  // the bar and shouldn't hang open while you hover the other tabs.
   const hoverable = window.matchMedia("(hover: hover) and (pointer: fine)");
+  const dock = document.querySelector<HTMLElement>(".dock");
 
   document.querySelectorAll<HTMLElement>(".dock-group").forEach((group) => {
     const btn = group.querySelector<HTMLButtonElement>("[data-flyout-toggle]");
     if (!btn) return;
+    const sticky = group.classList.contains("dock-research") && !!dock;
 
     const setOpen = (open: boolean) => {
       btn.setAttribute("aria-expanded", String(open));
@@ -286,7 +315,7 @@ const isExternal = (href: string) => href.startsWith("http");
     group.addEventListener("mouseenter", () => {
       if (hoverable.matches) setOpen(true);
     });
-    group.addEventListener("mouseleave", () => {
+    (sticky ? dock! : group).addEventListener("mouseleave", () => {
       if (hoverable.matches) setOpen(false);
     });
 
