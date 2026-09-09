@@ -148,7 +148,17 @@ const { title, description, active = "", ogImage } = Astro.props;
 
   .bg-layer {
     position: fixed;
-    inset: 0;
+    top: 0;
+    left: 0;
+    right: 0;
+    /* Pinned to the LARGE viewport height, not `bottom: 0`. On iOS the URL bar
+       collapses as you scroll, which changes the height of a bottom-anchored
+       fixed box mid-scroll; every canvas field listens for resize and re-derives
+       its geometry from clientHeight, so the scene jumped on every scroll. `lvh`
+       is the bar-hidden height and stays constant while the bar animates; `vh`
+       is the same value on iOS and the fallback everywhere else. */
+    height: 100vh;
+    height: 100lvh;
     z-index: var(--z-background);
     /* background-color (not the `background` shorthand) so the notebook grid
        background-image in global.css isn't reset. */

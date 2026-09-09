@@ -715,13 +715,14 @@ small { font-size: var(--text-sm); color: var(--text-secondary); }
 :root[data-islands="full"] [data-island-expand] { display: none; }
 
 /* On a phone an island is already about as wide as the viewport allows, so
-   "enlarge" only trims the margins and "shrink" only makes the reading column
-   worse. The whole cluster goes: hiding enlarge alone would leave a one-way trip
-   into the shrunk state, since enlarge is the way back out of it. The page-spine
-   restore button also carries data-island-expand and is deliberately NOT matched
-   here, so a spine-shrunk page can still be restored. */
+   "enlarge" has nowhere to go: it would only trim the margins. What is worth
+   having is ONE button that alternates — minimise to see the background, then
+   restore. So exactly one of the pair is shown at a time, chosen by the current
+   level: shrink while the islands are normal, expand once they are minimised. */
 @media (max-width: 899px) {
-  .island-controls { display: none; }
+  .island-controls [data-island-expand] { display: none; }
+  :root[data-islands="side"] .island-controls [data-island-shrink] { display: none; }
+  :root[data-islands="side"] .island-controls [data-island-expand] { display: inline-grid; }
 }
 
 /* FULL — each island widens to nearly fill the viewport but keeps its own height,
