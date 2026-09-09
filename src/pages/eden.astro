@@ -10,7 +10,12 @@ import { Icon } from "astro-icon/components";
 import { eden } from "../config/site";
 ---
 
-<PageShell title={eden.title} active="eden">
+<PageShell
+  title={eden.title}
+  active="eden"
+  description="Eden: scalable oversight for autonomous science. A model proposes the checks, a small trusted kernel decides."
+  ogImage="/images/cosmos-grant.jpg"
+>
   <GenesisField slot="background" />
   <Island as="header">
     <p class="eyebrow">{eden.eyebrow}</p>

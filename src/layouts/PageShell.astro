@@ -14,16 +14,19 @@ import NeutrinoControls from "../components/NeutrinoControls.astro";
 import GwMerger from "../components/GwMerger.astro";
 import GenesisControls from "../components/GenesisControls.astro";
 import PsoControls from "../components/PsoControls.astro";
+import MnistRail from "../components/MnistRail.astro";
 
 interface Props {
   title: string;
   description?: string;
   active?: string;
+  /** Social-preview override, root-relative (see Layout). */
+  ogImage?: string;
 }
-const { title, description, active = "" } = Astro.props;
+const { title, description, active = "", ogImage } = Astro.props;
 ---
 
-<Layout title={title} description={description}>
+<Layout title={title} description={description} ogImage={ogImage}>
   <a class="skip-link" href="#main">Skip to content</a>
 
   {/* GW merger intro — once-ever on Home, pre-paint gate. First visit (desktop,
@@ -80,6 +83,8 @@ const { title, description, active = "" } = Astro.props;
   {/* {active === "cosmology" && <GenesisControls />} */}
   {/* Depth colour-map toggle: research/materials only (PSO contour background). */}
   {active === "materials" && <PsoControls />}
+  {/* A real forward pass down the right margin, advanced by scroll: AI page only. */}
+  {active === "ai" && <MnistRail />}
   {/* GW merger intro overlay (home only; GwMerger self-skips when the gate set .gw-off). */}
   {active === "home" && <GwMerger />}
   {/* Replay the intro — bottom-right; fades in with the chrome (hidden while the dive plays). */}

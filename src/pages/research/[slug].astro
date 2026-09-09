@@ -140,7 +140,7 @@ const islands = await Promise.all(
 );
 ---
 
-<PageShell title={area.label} active={area.slug}>
+<PageShell title={area.label} active={area.slug} description={area.blurb}>
   {/* The computational page runs a live PSO over a drifting landscape behind the islands. */}
   {area.slug === "materials" && <PsoField slot="background" />}
   {area.slug === "neutrino" && <NeutrinoField slot="background" />}
