@@ -44,7 +44,12 @@
   // ZOOM mode (disk ON, spin 0, far/small) so the merger explosion uncovers it and the camera
   // flies in (zoomIntro on gw:explode) with the accretion present — no 2D→3D transition.
   const staged = document.documentElement.classList.contains("gw-intro");
-  if (frame && frame.dataset.src && wide.matches && !reduce.matches) {
+  // Opt-in for measuring the live renderer on a real phone: ?bh=live loads it
+  // below the width gate. The still remains the default everywhere; reduced
+  // motion still wins. Delete this line to drop the escape hatch.
+  let forceLive = false;
+  try { forceLive = new URLSearchParams(location.search).get("bh") === "live"; } catch (e) {}
+  if (frame && frame.dataset.src && (wide.matches || forceLive) && !reduce.matches) {
     // perf=bg pins a cheap tier + caps DPR (this is a decorative NPR background).
     frame.src = frame.dataset.src + "?style=" + style + "&grid=" + (gridOn ? "1" : "0") + "&perf=bg" + (staged ? "&reveal=zoom" : "");
   }

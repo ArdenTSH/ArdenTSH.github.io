@@ -714,6 +714,16 @@ small { font-size: var(--text-sm); color: var(--text-secondary); }
 /* at full size there's nowhere bigger to go — drop the enlarge control, leave one */
 :root[data-islands="full"] [data-island-expand] { display: none; }
 
+/* On a phone an island is already about as wide as the viewport allows, so
+   "enlarge" only trims the margins and "shrink" only makes the reading column
+   worse. The whole cluster goes: hiding enlarge alone would leave a one-way trip
+   into the shrunk state, since enlarge is the way back out of it. The page-spine
+   restore button also carries data-island-expand and is deliberately NOT matched
+   here, so a spine-shrunk page can still be restored. */
+@media (max-width: 899px) {
+  .island-controls { display: none; }
+}
+
 /* FULL — each island widens to nearly fill the viewport but keeps its own height,
    so it stays a flow child you scroll straight past (the scene shows between). */
 :root[data-islands="full"] .island {
