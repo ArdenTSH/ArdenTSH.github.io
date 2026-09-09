@@ -944,3 +944,21 @@ small { font-size: var(--text-sm); color: var(--text-secondary); }
   transition: transform var(--dur-fast) var(--ease-standard);
 }
 .skip-link:focus { transform: translateY(0); }
+
+/* ── Mobile: clear the bottom-right corner ────────────────────────────────────
+   Every page-specific control cluster is fixed to the bottom-right, and on a
+   phone that row wraps across the dock and over the content beneath it (the CV
+   page is the worst case, with four controls). None of them is load-bearing:
+   each background keeps its default mode, so hiding the controls costs a
+   preference, not a feature. The mode toggle is top-right and stays, so light
+   and dark remain switchable. 900px matches the breakpoint the black-hole
+   background and the dock's research flyout already use. */
+@media (max-width: 899px) {
+  .collider-controls,
+  .nu-controls,
+  .pso-controls,
+  .genesis-toggle,
+  .gw-replay {
+    display: none !important;
+  }
+}
