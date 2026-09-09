@@ -7,8 +7,14 @@
 //
 // Loaded — and made interactive (drag the empty margins to orbit) — on DESKTOP
 // only, and skipped under reduced-motion, to protect mobile performance and
-// accessibility. Elsewhere the page simply shows its plain dark background.
+// accessibility. WHERE IT IS SKIPPED a still frame of the same renderer stands
+// in, one per theme, so a phone gets the image without the shader: a WebP
+// costing tens of kilobytes once, rather than a per-pixel ray trace every frame.
+// The CSS gate below mirrors the JS gate exactly, and the images are referenced
+// only inside the media query, so desktop never downloads them.
 ---
+
+<div class="bh-still" aria-hidden="true"></div>
 
 <iframe
   class="bh-bg"
@@ -102,6 +108,23 @@
 </script>
 
 <style>
+  /* The still stand-in. Hidden by default so desktop never fetches it; shown on
+     exactly the conditions that skip the live renderer. The iframe paints over
+     it when it does load, which also makes this a free progressive placeholder. */
+  .bh-still { display: none; }
+
+  @media (max-width: 899px), (prefers-reduced-motion: reduce) {
+    .bh-still {
+      display: block;
+      position: absolute;
+      inset: 0;
+      background: url("/images/home-still.webp") center / cover no-repeat;
+    }
+    :global(:root[data-theme="dark"]) .bh-still {
+      background-image: url("/images/home-still-dark.webp");
+    }
+  }
+
   .bh-bg {
     position: absolute;
     inset: 0;
