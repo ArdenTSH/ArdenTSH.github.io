@@ -1,0 +1,351 @@
+---
+// <MnistRail> — a real forward pass down the right-hand margin, driven by scroll.
+//
+// The page's scroll position IS the propagation: a wavefront descends the rail
+// as you read, so the strip doubles as a progress indicator. Top is the input,
+// a 14×14 pixel grid, which is literally the vector the network receives (MNIST
+// mean-pooled 2×2, so what the reader sees is what the model gets). Below it:
+// two hidden layers of 16 units, an output layer of 10, and at the bottom the
+// predicted digit set in type once the signal arrives.
+//
+// The model is real and runs in the browser: a 196-16-16-10 MLP (3,594
+// parameters, 96.1% test accuracy) trained offline; weights are fetched lazily
+// from /models/mnist-mlp.json on first paint. Brightness of every neuron is its
+// actual activation, and every edge drawn is a genuine weight, so the picture is
+// the computation rather than an impression of one.
+//
+// Contract, as with every animation here: lazy-loaded, idle when the tab is
+// hidden, a complete static forward pass under reduced motion, hidden on narrow
+// screens, and removable. If the fetch fails the rail simply never appears.
+//
+// A new digit is chosen on each load. The `setInput` hook below is the seam for
+// letting a visitor draw their own digit into the grid later.
+---
+
+<aside class="mnist-rail" aria-hidden="true" data-mnist-rail hidden>
+  <canvas class="mnist-canvas"></canvas>
+  <div class="mnist-answer" data-mnist-answer>
+    <span class="mnist-digit" data-mnist-digit></span>
+    <span class="mnist-conf" data-mnist-conf></span>
+  </div>
+</aside>
+
+<style>
+  .mnist-rail {
+    position: fixed;
+    right: var(--space-6);
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: var(--z-content);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    width: 168px;
+    pointer-events: none;
+  }
+  .mnist-canvas {
+    display: block;
+    width: 168px;
+    height: min(60vh, 460px);
+  }
+  .mnist-answer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-height: 3.2rem;
+    opacity: 0;
+    transition: opacity var(--dur-base) var(--ease-standard);
+  }
+  .mnist-digit {
+    font-family: var(--font-display);
+    font-size: 2.4rem;
+    line-height: 1;
+    color: var(--text-primary);
+  }
+  .mnist-conf {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-label);
+    color: var(--text-secondary);
+  }
+
+  /* The island column is only pinned left from 900px, and the rail needs its own
+     clear margin beyond that, so it appears a little later. */
+  @media (max-width: 1079px) {
+    .mnist-rail { display: none; }
+  }
+</style>
+
+<script>
+  type Model = {
+    sizes: number[];
+    accuracy: number;
+    w: number[][];
+    b: number[][];
+    digits: { label: number; conf: number; px: number[] }[];
+  };
+
+  const rail = document.querySelector<HTMLElement>("[data-mnist-rail]");
+  const canvas = rail?.querySelector<HTMLCanvasElement>(".mnist-canvas");
+  const answerEl = rail?.querySelector<HTMLElement>("[data-mnist-answer]");
+  const digitEl = rail?.querySelector<HTMLElement>("[data-mnist-digit]");
+  const confEl = rail?.querySelector<HTMLElement>("[data-mnist-conf]");
+
+  if (rail && canvas && answerEl && digitEl && confEl && matchMedia("(min-width: 1080px)").matches) {
+    const ctx = canvas.getContext("2d");
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+
+    // ── Geometry ─────────────────────────────────────────────────────────────
+    const PAD = 8;
+    const GRID = 14;
+    let W = 0, H = 0, dpr = 1;
+    let cell = 10, gridX = 0, gridY = 0, gridSize = 0;
+    let rowY: number[] = [];              // y of each neuron row: h1, h2, out
+
+    // ── Colours, re-read when the theme flips ────────────────────────────────
+    let ink = "#222", faint = "#bbb", accent = "#4d9be6", edge = "#ccc";
+    const readColours = () => {
+      const cs = getComputedStyle(document.documentElement);
+      ink = (cs.getPropertyValue("--text-primary") || ink).trim();
+      faint = (cs.getPropertyValue("--text-faint") || faint).trim();
+      accent = (cs.getPropertyValue("--accent") || accent).trim();
+      edge = (cs.getPropertyValue("--border-strong") || edge).trim();
+      draw();
+    };
+
+    // ── Model state ──────────────────────────────────────────────────────────
+    let model: Model | null = null;
+    let input: number[] = [];             // 196 values in [0,1]
+    let a1: number[] = [], a2: number[] = [], probs: number[] = [];
+    let n1max = 1, n2max = 1;
+    // Sampled edges per bundle: [fromIndex, toIndex, strength(-1..1)]
+    let e1: [number, number, number][] = [];
+    let e2: [number, number, number][] = [];
+    let e3: [number, number, number][] = [];
+
+    const relu = (v: number) => (v > 0 ? v : 0);
+
+    /** Run the network and pick the edges worth drawing for THIS input. */
+    function setInput(px: number[]) {
+      if (!model) return;
+      input = px.map((v) => v / 255);
+      const [nIn, nH1, nH2, nOut] = model.sizes;
+      const [w1, w2, w3] = model.w;
+      const [b1, b2, b3] = model.b;
+
+      a1 = new Array(nH1);
+      for (let j = 0; j < nH1; j++) {
+        let s = b1[j];
+        for (let i = 0; i < nIn; i++) s += input[i] * w1[i * nH1 + j];
+        a1[j] = relu(s);
+      }
+      a2 = new Array(nH2);
+      for (let j = 0; j < nH2; j++) {
+        let s = b2[j];
+        for (let i = 0; i < nH1; i++) s += a1[i] * w2[i * nH2 + j];
+        a2[j] = relu(s);
+      }
+      const logits = new Array(nOut);
+      for (let j = 0; j < nOut; j++) {
+        let s = b3[j];
+        for (let i = 0; i < nH2; i++) s += a2[i] * w3[i * nOut + j];
+        logits[j] = s;
+      }
+      const mx = Math.max(...logits);
+      const ex = logits.map((v) => Math.exp(v - mx));
+      const sum = ex.reduce((p, c) => p + c, 0);
+      probs = ex.map((v) => v / sum);
+
+      n1max = Math.max(...a1, 1e-6);
+      n2max = Math.max(...a2, 1e-6);
+
+      // Edges are chosen by CONTRIBUTION (weight × incoming activation), so the
+      // lines drawn are the ones that actually carried this digit's signal.
+      const pick = (
+        nFrom: number, nTo: number, w: number[], act: number[], perTo: number,
+      ): [number, number, number][] => {
+        const out: [number, number, number][] = [];
+        for (let j = 0; j < nTo; j++) {
+          const scored: [number, number][] = [];
+          for (let i = 0; i < nFrom; i++) scored.push([i, act[i] * w[i * nTo + j]]);
+          scored.sort((p, q) => Math.abs(q[1]) - Math.abs(p[1]));
+          const top = scored.slice(0, perTo);
+          const norm = Math.abs(top[0]?.[1] ?? 1) || 1;
+          for (const [i, c] of top) out.push([i, j, c / norm]);
+        }
+        return out;
+      };
+      e1 = pick(nIn, nH1, w1, input, 3);
+      e2 = pick(nH1, nH2, w2, a1, 5);
+      e3 = pick(nH2, nOut, w3, a2, 5);
+
+      const best = probs.indexOf(Math.max(...probs));
+      digitEl.textContent = String(best);
+      confEl.textContent = `p = ${probs[best].toFixed(2)}`;
+      draw();
+    }
+    // Exposed so a future "draw your own digit" control can push a new input.
+    (window as any).mnistSetInput = setInput;
+
+    // ── Sizing ───────────────────────────────────────────────────────────────
+    function resize() {
+      const r = canvas.getBoundingClientRect();
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      W = Math.max(1, Math.round(r.width));
+      H = Math.max(1, Math.round(r.height));
+      canvas.width = Math.round(W * dpr);
+      canvas.height = Math.round(H * dpr);
+      cell = Math.floor((W - 2 * PAD) / GRID);
+      gridSize = cell * GRID;
+      gridX = (W - gridSize) / 2;
+      gridY = 0;
+      // Three neuron rows share the space under the grid.
+      const rest = H - gridSize;
+      const step = rest / 3;
+      rowY = [gridSize + step * 0.62, gridSize + step * 1.62, gridSize + step * 2.62];
+      draw();
+    }
+
+    const xOf = (i: number, n: number) => PAD + ((i + 0.5) * (W - 2 * PAD)) / n;
+
+    // ── Scroll → wavefront ───────────────────────────────────────────────────
+    // p is page-scroll progress; the bundles fill in sequence, then the answer.
+    const SPANS: [number, number][] = [
+      [0.04, 0.34],   // input  → h1
+      [0.34, 0.58],   // h1     → h2
+      [0.58, 0.80],   // h2     → out
+      [0.80, 0.92],   // answer
+    ];
+    let progress = 0;
+    const scrollProgress = () => {
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      return max > 0 ? Math.min(1, Math.max(0, window.scrollY / max)) : 1;
+    };
+    const stage = (i: number) => {
+      const [a, b] = SPANS[i];
+      return Math.min(1, Math.max(0, (progress - a) / (b - a)));
+    };
+
+    // ── Drawing ──────────────────────────────────────────────────────────────
+    function bundle(
+      edges: [number, number, number][], t: number,
+      from: (i: number) => [number, number], to: (j: number) => [number, number],
+    ) {
+      if (t <= 0) return;
+      for (const [i, j, s] of edges) {
+        const [x0, y0] = from(i);
+        const [x1, y1] = to(j);
+        ctx!.globalAlpha = 0.1 + 0.5 * Math.abs(s) * t;
+        ctx!.strokeStyle = s >= 0 ? accent : faint;
+        ctx!.lineWidth = 0.6;
+        ctx!.beginPath();
+        ctx!.moveTo(x0, y0);
+        ctx!.lineTo(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
+        ctx!.stroke();
+      }
+      ctx!.globalAlpha = 1;
+    }
+
+    function neurons(acts: number[], norm: number, y: number, t: number) {
+      const n = acts.length;
+      const r = n > 12 ? 3.1 : 4.2;
+      for (let i = 0; i < n; i++) {
+        const x = xOf(i, n);
+        const lit = Math.min(1, (acts[i] / norm) * t);
+        ctx!.beginPath();
+        ctx!.arc(x, y, r, 0, Math.PI * 2);
+        ctx!.fillStyle = accent;
+        ctx!.globalAlpha = 0.12 + 0.88 * lit;
+        ctx!.fill();
+        ctx!.globalAlpha = 0.55;
+        ctx!.lineWidth = 0.8;
+        ctx!.strokeStyle = edge;
+        ctx!.stroke();
+        ctx!.globalAlpha = 1;
+      }
+    }
+
+    function draw() {
+      if (!ctx || !model) return;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, W, H);
+
+      // Input: the 14×14 grid, which is the input vector itself.
+      for (let r = 0; r < GRID; r++) {
+        for (let c = 0; c < GRID; c++) {
+          const v = input[r * GRID + c] ?? 0;
+          if (v <= 0.02) continue;
+          ctx.globalAlpha = 0.15 + 0.85 * v;
+          ctx.fillStyle = ink;
+          ctx.fillRect(gridX + c * cell, gridY + r * cell, cell - 1, cell - 1);
+        }
+      }
+      ctx.globalAlpha = 0.5;
+      ctx.strokeStyle = edge;
+      ctx.lineWidth = 0.7;
+      ctx.strokeRect(gridX - 1, gridY - 1, gridSize + 2, gridSize + 2);
+      ctx.globalAlpha = 1;
+
+      const t0 = stage(0), t1 = stage(1), t2 = stage(2), t3 = stage(3);
+      const gridPos = (i: number): [number, number] => [
+        gridX + ((i % GRID) + 0.5) * cell,
+        gridY + (Math.floor(i / GRID) + 0.5) * cell,
+      ];
+      const h1Pos = (i: number): [number, number] => [xOf(i, 16), rowY[0]];
+      const h2Pos = (i: number): [number, number] => [xOf(i, 16), rowY[1]];
+      const outPos = (i: number): [number, number] => [xOf(i, 10), rowY[2]];
+
+      bundle(e1, t0, gridPos, h1Pos);
+      bundle(e2, t1, h1Pos, h2Pos);
+      bundle(e3, t2, h2Pos, outPos);
+      neurons(a1, n1max, rowY[0], t0);
+      neurons(a2, n2max, rowY[1], t1);
+      neurons(probs, Math.max(...probs, 1e-6), rowY[2], t2);
+
+      answerEl.style.opacity = String(t3);
+    }
+
+    // ── Loop: redraw only when scroll actually moved ─────────────────────────
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking || reduce.matches) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        ticking = false;
+        const p = scrollProgress();
+        if (Math.abs(p - progress) < 0.001) return;
+        progress = p;
+        draw();
+      });
+    };
+
+    // ── Boot: fetch the weights, pick a digit, show the rail ─────────────────
+    fetch("/models/mnist-mlp.json")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((m: Model) => {
+        model = m;
+        readColours();
+        resize();
+        // A different digit each load.
+        setInput(m.digits[Math.floor(Math.random() * m.digits.length)].px);
+        progress = reduce.matches ? 1 : scrollProgress();
+        rail.hidden = false;
+        draw();
+
+        new MutationObserver(readColours).observe(document.documentElement, {
+          attributes: true, attributeFilter: ["data-theme"],
+        });
+        new ResizeObserver(resize).observe(canvas);
+        window.addEventListener("scroll", onScroll, { passive: true });
+        reduce.addEventListener("change", () => {
+          progress = reduce.matches ? 1 : scrollProgress();
+          draw();
+        });
+      })
+      .catch(() => {
+        // Weights unavailable: leave the rail hidden. Nothing else depends on it.
+      });
+  }
+</script>
