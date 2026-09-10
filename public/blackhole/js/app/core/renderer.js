@@ -1306,6 +1306,19 @@ function init(glslSource, textures) {
             applyRenderScaleFromSettings();                               // re-apply render size now
         }
     } catch (e) {}
+
+    // Optional finer control under the tier: ?res=0.34 sets the render scale
+    // directly. perf=bg already caps DPR to 1, so a phone renders at CSS pixels;
+    // this takes it below that, which is what makes a live background viable on
+    // a handset. Clamped, so a junk value cannot break the renderer.
+    try {
+        var resFromUrl = parseFloat(new URLSearchParams(window.location.search).get('res'));
+        if (isFinite(resFromUrl) && resFromUrl > 0 && shader && shader.parameters) {
+            shader.parameters.resolution_scale = clampResolutionScale(resFromUrl);
+            applyRenderScaleFromSettings();
+        }
+    } catch (e) {}
+
     beginQualityBenchmarkIfNeeded();
 
     // ===== Render-style toggle (photoreal | sketch) — no shader recompile =====

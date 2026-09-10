@@ -44,14 +44,59 @@
   // ZOOM mode (disk ON, spin 0, far/small) so the merger explosion uncovers it and the camera
   // flies in (zoomIntro on gw:explode) with the accretion present — no 2D→3D transition.
   const staged = document.documentElement.classList.contains("gw-intro");
-  // Opt-in for measuring the live renderer on a real phone: ?bh=live loads it
-  // below the width gate. The still remains the default everywhere; reduced
-  // motion still wins. Delete this line to drop the escape hatch.
-  let forceLive = false;
-  try { forceLive = new URLSearchParams(location.search).get("bh") === "live"; } catch (e) {}
-  if (frame && frame.dataset.src && (wide.matches || forceLive) && !reduce.matches) {
+  // The renderer now loads at EVERY width (reduced motion still opts out). Desktop
+  // keeps the tier it has always had; a phone renders below CSS pixels via ?res,
+  // because perf=bg has already capped DPR to 1 there. On a phone the still frame
+  // is painted underneath by CSS, so it doubles as the poster while the shader
+  // compiles — and as the landing place if the watchdog below gives up.
+  const small = !wide.matches;
+  if (frame && frame.dataset.src && !reduce.matches) {
     // perf=bg pins a cheap tier + caps DPR (this is a decorative NPR background).
-    frame.src = frame.dataset.src + "?style=" + style + "&grid=" + (gridOn ? "1" : "0") + "&perf=bg" + (staged ? "&reveal=zoom" : "");
+    frame.src =
+      frame.dataset.src + "?style=" + style + "&grid=" + (gridOn ? "1" : "0") + "&perf=bg" +
+      (small ? "&res=0.34" : "") + (staged ? "&reveal=zoom" : "");
+    if (small) watchLiveOrFallBack(frame);
+  }
+
+  // Self-correcting mobile gate. Rather than guess which handsets can afford a
+  // geodesic ray-tracer, ask the device: once the iframe has loaded and had time
+  // to compile, count its own animation frames for a second. If it never gets
+  // going, or cannot hold a usable rate, drop the renderer and leave the still
+  // frame showing. Capable phones keep the live background; the rest never stutter.
+  function watchLiveOrFallBack(f: HTMLIFrameElement) {
+    const WARMUP_MS = 1800;   // shader compile on mobile is slow; judge after it
+    const SAMPLE_MS = 1000;
+    const MIN_FPS = 20;
+    const GIVE_UP_MS = 9000;  // never started at all
+
+    let settled = false;
+    const fallBack = () => {
+      settled = true;
+      try { f.src = "about:blank"; } catch (e) {}
+      f.style.display = "none";   // reveals the still painted beneath it
+    };
+    const stop = setTimeout(() => { if (!settled) fallBack(); }, GIVE_UP_MS);
+
+    f.addEventListener("load", () => {
+      const w = f.contentWindow as (Window & typeof globalThis) | null;
+      if (!w) return;
+      setTimeout(() => {
+        if (settled) return;
+        // no canvas means WebGL never came up at all
+        if (!f.contentDocument?.querySelector("canvas")) { clearTimeout(stop); fallBack(); return; }
+        let frames = 0;
+        const t0 = w.performance.now();
+        const tick = () => {
+          frames++;
+          const dt = w.performance.now() - t0;
+          if (dt < SAMPLE_MS) { w.requestAnimationFrame(tick); return; }
+          settled = true;
+          clearTimeout(stop);
+          if ((frames * 1000) / dt < MIN_FPS) fallBack();
+        };
+        w.requestAnimationFrame(tick);
+      }, WARMUP_MS);
+    });
   }
 
   // ── Perf + replay ────────────────────────────────────────────────────────────
