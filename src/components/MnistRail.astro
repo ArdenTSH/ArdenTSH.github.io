@@ -1,33 +1,53 @@
 ---
-// <MnistRail> — a real forward pass down the right-hand margin, driven by scroll.
+// <MnistRail> — a real forward pass down the right-hand margin, driven by scroll,
+// with a 14×14 whiteboard at the top you can draw on.
 //
-// The page's scroll position IS the propagation: a wavefront descends the rail
-// as you read, so the strip doubles as a progress indicator. Top is the input,
-// a 14×14 pixel grid, which is literally the vector the network receives (MNIST
-// mean-pooled 2×2, so what the reader sees is what the model gets). Below it:
-// two hidden layers of 16 units, an output layer of 10, and at the bottom the
-// predicted digit set in type once the signal arrives.
+// The page's scroll position IS the propagation: a wavefront descends the rail as
+// you read, so the strip doubles as a progress indicator. Top is the board, which
+// is literally the vector the network receives (MNIST mean-pooled 2×2 to 14×14, so
+// what the reader sees is what the model gets). Below it: two hidden layers of 16
+// units, and a small output board at the bottom the predicted digit lands in.
 //
-// The model is real and runs in the browser: a 196-16-16-10 MLP (3,594
-// parameters, 96.1% test accuracy) trained offline; weights are fetched lazily
-// from /models/mnist-mlp.json on first paint. Brightness of every neuron is its
-// actual activation, and every edge drawn is a genuine weight, so the picture is
-// the computation rather than an impression of one.
+// No confidence figure is printed. Softmax stays high on inputs nothing like a
+// digit, so a number there would imply a calibration the network does not have.
 //
-// Contract, as with every animation here: lazy-loaded, idle when the tab is
-// hidden, a complete static forward pass under reduced motion, hidden on narrow
-// screens, and removable. If the fetch fails the rail simply never appears.
+// Draw on the board and the network re-runs on your digit. Drawing switches the
+// rail to manual mode: the full pass is shown at once rather than following the
+// scroll, because someone drawing is not reading. "sample" returns to a stored
+// MNIST digit, "clear" empties the board.
 //
-// A new digit is chosen on each load. The `setInput` hook below is the seam for
-// letting a visitor draw their own digit into the grid later.
+// The model is real and runs in the browser: a 196-16-16-10 MLP (3,594 parameters,
+// 96.1% test accuracy) trained offline by scripts/train_mnist.py; weights are
+// fetched lazily from /models/mnist-mlp.json. Every neuron's brightness is its
+// actual activation and every edge drawn is a real weight, chosen per input by
+// weight × incoming activation, so the picture is the computation.
+//
+// Contract, as with every animation here: lazy-loaded, idle unless the scroll moved,
+// a complete static pass under reduced motion, hidden below 1080px, and removable.
+// If the fetch fails the rail never appears and nothing else is affected.
 ---
 
-<aside class="mnist-rail" aria-hidden="true" data-mnist-rail hidden>
-  <canvas class="mnist-canvas"></canvas>
-  <div class="mnist-answer" data-mnist-answer>
-    <span class="mnist-digit" data-mnist-digit></span>
-    <span class="mnist-conf" data-mnist-conf></span>
+<aside class="mnist-rail" data-mnist-rail hidden aria-label="Handwritten-digit recogniser">
+  <div class="mnist-controls">
+    <button type="button" data-mnist-clear>clear</button>
+    <span class="mnist-sep" aria-hidden="true">·</span>
+    <button type="button" data-mnist-sample>sample</button>
   </div>
+
+  <div class="mnist-stage">
+    <canvas class="mnist-canvas" aria-hidden="true"></canvas>
+    <div
+      class="mnist-board"
+      data-mnist-board
+      tabindex="0"
+      role="img"
+      aria-label="Drawing board, 14 by 14 pixels. Draw a digit with the pointer."
+    ></div>
+  </div>
+
+  <p class="mnist-answer" data-mnist-answer aria-live="polite">
+    <span class="mnist-digit" data-mnist-digit></span>
+  </p>
 </aside>
 
 <style>
@@ -42,33 +62,69 @@
     align-items: center;
     gap: var(--space-2);
     width: 168px;
+    /* Only the board and its buttons take the pointer; the rest is a drawing. */
     pointer-events: none;
   }
+
+  .mnist-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-label);
+    color: var(--text-faint);
+    pointer-events: auto;
+  }
+  .mnist-controls button {
+    font: inherit;
+    letter-spacing: inherit;
+    color: var(--text-secondary);
+    background: none;
+    border: 0;
+    padding: 2px 4px;
+    cursor: pointer;
+    border-radius: var(--radius-xs);
+  }
+  .mnist-controls button:hover { color: var(--accent); }
+  .mnist-controls button:focus-visible { outline: none; box-shadow: var(--ring); }
+
+  .mnist-stage { position: relative; width: 100%; }
   .mnist-canvas {
     display: block;
     width: 168px;
     height: min(60vh, 460px);
   }
+  /* Sits exactly over the board the canvas draws; positioned from script. */
+  .mnist-board {
+    position: absolute;
+    cursor: crosshair;
+    pointer-events: auto;
+    border-radius: 6px;              /* matches the canvas-drawn board corner */
+    touch-action: none;
+  }
+  .mnist-board:focus-visible { outline: none; box-shadow: var(--ring); }
+
+  /* The output board: a small panel the answer lands in, matching the input
+     board at the top so the rail reads as board → network → board. */
   .mnist-answer {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 2px;
-    min-height: 3.2rem;
-    opacity: 0;
-    transition: opacity var(--dur-base) var(--ease-standard);
+    justify-content: center;
+    width: 3.1rem;
+    height: 3.1rem;
+    margin: 0;
+    background: var(--surface);
+    border: var(--hairline) solid var(--border-strong);
+    border-radius: 6px;
   }
   .mnist-digit {
     font-family: var(--font-display);
-    font-size: 2.4rem;
+    font-size: 2rem;
     line-height: 1;
     color: var(--text-primary);
-  }
-  .mnist-conf {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    letter-spacing: var(--tracking-label);
-    color: var(--text-secondary);
+    opacity: 0;
+    transition: opacity var(--dur-base) var(--ease-standard);
   }
 
   /* The island column is only pinned left from 900px, and the rail needs its own
@@ -84,53 +140,55 @@
     accuracy: number;
     w: number[][];
     b: number[][];
-    digits: { label: number; conf: number; px: number[] }[];
+    digits: { label: number; px: number[] }[];
   };
 
   const rail = document.querySelector<HTMLElement>("[data-mnist-rail]");
   const canvas = rail?.querySelector<HTMLCanvasElement>(".mnist-canvas");
+  const board = rail?.querySelector<HTMLElement>("[data-mnist-board]");
   const answerEl = rail?.querySelector<HTMLElement>("[data-mnist-answer]");
   const digitEl = rail?.querySelector<HTMLElement>("[data-mnist-digit]");
-  const confEl = rail?.querySelector<HTMLElement>("[data-mnist-conf]");
+  const clearBtn = rail?.querySelector<HTMLButtonElement>("[data-mnist-clear]");
+  const sampleBtn = rail?.querySelector<HTMLButtonElement>("[data-mnist-sample]");
 
-  if (rail && canvas && answerEl && digitEl && confEl && matchMedia("(min-width: 1080px)").matches) {
+  if (rail && canvas && board && answerEl && digitEl && clearBtn && sampleBtn &&
+      matchMedia("(min-width: 1080px)").matches) {
     const ctx = canvas.getContext("2d");
     const reduce = matchMedia("(prefers-reduced-motion: reduce)");
 
-    // ── Geometry ─────────────────────────────────────────────────────────────
+    // ── State ────────────────────────────────────────────────────────────────
     const PAD = 8;
     const GRID = 14;
     let W = 0, H = 0, dpr = 1;
     let cell = 10, gridX = 0, gridY = 0, gridSize = 0;
-    let rowY: number[] = [];              // y of each neuron row: h1, h2, out
+    let rowY: number[] = [];
+    let progress = 0;
+    let manual = false;            // set once the visitor draws: show the whole pass
 
-    // ── Colours, re-read when the theme flips ────────────────────────────────
-    let ink = "#222", faint = "#bbb", accent = "#4d9be6", edge = "#ccc";
+    let ink = "#222", faint = "#bbb", accent = "#4d9be6", edge = "#ccc", board_ = "#fff";
     const readColours = () => {
       const cs = getComputedStyle(document.documentElement);
       ink = (cs.getPropertyValue("--text-primary") || ink).trim();
       faint = (cs.getPropertyValue("--text-faint") || faint).trim();
       accent = (cs.getPropertyValue("--accent") || accent).trim();
       edge = (cs.getPropertyValue("--border-strong") || edge).trim();
+      board_ = (cs.getPropertyValue("--surface") || board_).trim();
       draw();
     };
 
-    // ── Model state ──────────────────────────────────────────────────────────
     let model: Model | null = null;
-    let input: number[] = [];             // 196 values in [0,1]
+    let input: number[] = new Array(GRID * GRID).fill(0);
     let a1: number[] = [], a2: number[] = [], probs: number[] = [];
     let n1max = 1, n2max = 1;
-    // Sampled edges per bundle: [fromIndex, toIndex, strength(-1..1)]
     let e1: [number, number, number][] = [];
     let e2: [number, number, number][] = [];
     let e3: [number, number, number][] = [];
 
     const relu = (v: number) => (v > 0 ? v : 0);
 
-    /** Run the network and pick the edges worth drawing for THIS input. */
-    function setInput(px: number[]) {
+    /** Forward pass over the current `input`, plus the edges worth drawing. */
+    function runModel() {
       if (!model) return;
-      input = px.map((v) => v / 255);
       const [nIn, nH1, nH2, nOut] = model.sizes;
       const [w1, w2, w3] = model.w;
       const [b1, b2, b3] = model.b;
@@ -157,12 +215,11 @@
       const ex = logits.map((v) => Math.exp(v - mx));
       const sum = ex.reduce((p, c) => p + c, 0);
       probs = ex.map((v) => v / sum);
-
       n1max = Math.max(...a1, 1e-6);
       n2max = Math.max(...a2, 1e-6);
 
-      // Edges are chosen by CONTRIBUTION (weight × incoming activation), so the
-      // lines drawn are the ones that actually carried this digit's signal.
+      // Edges chosen by contribution, so the lines drawn are the ones that
+      // actually carried THIS input's signal.
       const pick = (
         nFrom: number, nTo: number, w: number[], act: number[], perTo: number,
       ): [number, number, number][] => {
@@ -173,7 +230,7 @@
           scored.sort((p, q) => Math.abs(q[1]) - Math.abs(p[1]));
           const top = scored.slice(0, perTo);
           const norm = Math.abs(top[0]?.[1] ?? 1) || 1;
-          for (const [i, c] of top) out.push([i, j, c / norm]);
+          for (const [i, c] of top) if (Math.abs(c) > 1e-9) out.push([i, j, c / norm]);
         }
         return out;
       };
@@ -181,12 +238,19 @@
       e2 = pick(nH1, nH2, w2, a1, 5);
       e3 = pick(nH2, nOut, w3, a2, 5);
 
+      // No confidence figure is shown. Softmax stays high on inputs nothing like
+      // a digit (a filled board reads as 0.89), so printing it would suggest a
+      // calibration the network does not have.
       const best = probs.indexOf(Math.max(...probs));
-      digitEl.textContent = String(best);
-      confEl.textContent = `p = ${probs[best].toFixed(2)}`;
+      digitEl.textContent = input.some((v) => v > 0.02) ? String(best) : "";
       draw();
     }
-    // Exposed so a future "draw your own digit" control can push a new input.
+
+    function setInput(px: number[]) {
+      input = px.map((v) => v / 255);
+      runModel();
+    }
+    // The seam a future control can use to push its own 196-value input.
     (window as any).mnistSetInput = setInput;
 
     // ── Sizing ───────────────────────────────────────────────────────────────
@@ -201,29 +265,32 @@
       gridSize = cell * GRID;
       gridX = (W - gridSize) / 2;
       gridY = 0;
-      // Three neuron rows share the space under the grid.
       const rest = H - gridSize;
       const step = rest / 3;
       rowY = [gridSize + step * 0.62, gridSize + step * 1.62, gridSize + step * 2.62];
+      // Park the interactive overlay exactly on the board.
+      board.style.left = `${gridX}px`;
+      board.style.top = `${gridY}px`;
+      board.style.width = `${gridSize}px`;
+      board.style.height = `${gridSize}px`;
       draw();
     }
 
     const xOf = (i: number, n: number) => PAD + ((i + 0.5) * (W - 2 * PAD)) / n;
 
     // ── Scroll → wavefront ───────────────────────────────────────────────────
-    // p is page-scroll progress; the bundles fill in sequence, then the answer.
     const SPANS: [number, number][] = [
       [0.04, 0.34],   // input  → h1
       [0.34, 0.58],   // h1     → h2
       [0.58, 0.80],   // h2     → out
       [0.80, 0.92],   // answer
     ];
-    let progress = 0;
     const scrollProgress = () => {
       const max = document.documentElement.scrollHeight - window.innerHeight;
       return max > 0 ? Math.min(1, Math.max(0, window.scrollY / max)) : 1;
     };
     const stage = (i: number) => {
+      if (manual || reduce.matches) return 1;
       const [a, b] = SPANS[i];
       return Math.min(1, Math.max(0, (progress - a) / (b - a)));
     };
@@ -253,7 +320,7 @@
       const r = n > 12 ? 3.1 : 4.2;
       for (let i = 0; i < n; i++) {
         const x = xOf(i, n);
-        const lit = Math.min(1, (acts[i] / norm) * t);
+        const lit = Math.min(1, ((acts[i] ?? 0) / norm) * t);
         ctx!.beginPath();
         ctx!.arc(x, y, r, 0, Math.PI * 2);
         ctx!.fillStyle = accent;
@@ -267,26 +334,78 @@
       }
     }
 
+    /** The whiteboard: a soft-cornered opaque panel ruled into all 196 cells. */
+    const RADIUS_PX = 6;
+    function boardPath() {
+      const c = ctx!;
+      c.beginPath();
+      if (typeof (c as any).roundRect === "function") {
+        (c as any).roundRect(gridX, gridY, gridSize, gridSize, RADIUS_PX);
+      } else {
+        c.rect(gridX, gridY, gridSize, gridSize);   // older engines: square corners
+      }
+    }
+
+    function drawBoard() {
+      const c = ctx!;
+      c.globalAlpha = 1;
+      c.fillStyle = board_;
+      boardPath();
+      c.fill();
+
+      // Everything inside the board is clipped to it, so the rules and the ink
+      // stop at the rounded corner rather than squaring it off again.
+      c.save();
+      boardPath();
+      c.clip();
+
+      // Faint rule between every cell, so the pixel lattice is always visible.
+      c.strokeStyle = edge;
+      c.globalAlpha = 0.28;
+      c.lineWidth = 0.5;
+      c.beginPath();
+      for (let k = 1; k < GRID; k++) {
+        const o = Math.round(k * cell) + 0.25;
+        c.moveTo(gridX + o, gridY);
+        c.lineTo(gridX + o, gridY + gridSize);
+        c.moveTo(gridX, gridY + o);
+        c.lineTo(gridX + gridSize, gridY + o);
+      }
+      c.stroke();
+
+      // The centre 10×10, which is where MNIST keeps its digits. Drawing inside
+      // it matches what the model was trained on.
+      c.globalAlpha = 0.5;
+      c.setLineDash([2, 3]);
+      c.lineWidth = 0.6;
+      c.strokeRect(gridX + 2 * cell, gridY + 2 * cell, 10 * cell, 10 * cell);
+      c.setLineDash([]);
+
+      // The ink.
+      for (let r = 0; r < GRID; r++) {
+        for (let col = 0; col < GRID; col++) {
+          const v = input[r * GRID + col] ?? 0;
+          if (v <= 0.02) continue;
+          c.globalAlpha = 0.15 + 0.85 * v;
+          c.fillStyle = ink;
+          c.fillRect(gridX + col * cell, gridY + r * cell, cell, cell);
+        }
+      }
+      c.restore();
+
+      c.globalAlpha = 0.65;
+      c.strokeStyle = edge;
+      c.lineWidth = 1;
+      boardPath();
+      c.stroke();
+      c.globalAlpha = 1;
+    }
+
     function draw() {
       if (!ctx || !model) return;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, W, H);
-
-      // Input: the 14×14 grid, which is the input vector itself.
-      for (let r = 0; r < GRID; r++) {
-        for (let c = 0; c < GRID; c++) {
-          const v = input[r * GRID + c] ?? 0;
-          if (v <= 0.02) continue;
-          ctx.globalAlpha = 0.15 + 0.85 * v;
-          ctx.fillStyle = ink;
-          ctx.fillRect(gridX + c * cell, gridY + r * cell, cell - 1, cell - 1);
-        }
-      }
-      ctx.globalAlpha = 0.5;
-      ctx.strokeStyle = edge;
-      ctx.lineWidth = 0.7;
-      ctx.strokeRect(gridX - 1, gridY - 1, gridSize + 2, gridSize + 2);
-      ctx.globalAlpha = 1;
+      drawBoard();
 
       const t0 = stage(0), t1 = stage(1), t2 = stage(2), t3 = stage(3);
       const gridPos = (i: number): [number, number] => [
@@ -304,13 +423,90 @@
       neurons(a2, n2max, rowY[1], t1);
       neurons(probs, Math.max(...probs, 1e-6), rowY[2], t2);
 
-      answerEl.style.opacity = String(t3);
+      digitEl.style.opacity = String(input.some((v) => v > 0.02) ? t3 : 0);
     }
 
-    // ── Loop: redraw only when scroll actually moved ─────────────────────────
+    // ── Painting ─────────────────────────────────────────────────────────────
+    // A soft brush, because MNIST strokes are anti-aliased: a hard single-cell
+    // mark is nothing like the training data and the model would deserve to fail.
+    // Roughly two cells across with soft edges, which is what an MNIST stroke
+    // looks like at 14×14. Samples take the MAXIMUM rather than accumulating, so
+    // a slow stroke or an overlapping interpolation cannot fatten the line.
+    const RADIUS = 1.05;                       // in cells
+    function paint(cx: number, cy: number) {
+      const c0 = Math.max(0, Math.floor(cx - RADIUS));
+      const c1 = Math.min(GRID - 1, Math.ceil(cx + RADIUS));
+      const r0 = Math.max(0, Math.floor(cy - RADIUS));
+      const r1 = Math.min(GRID - 1, Math.ceil(cy + RADIUS));
+      for (let r = r0; r <= r1; r++) {
+        for (let c = c0; c <= c1; c++) {
+          const d = Math.hypot(c + 0.5 - cx, r + 0.5 - cy);
+          const v = Math.min(1, Math.max(0, 1.25 - d / RADIUS));
+          if (v <= 0) continue;
+          const i = r * GRID + c;
+          if (v > input[i]) input[i] = v;
+        }
+      }
+    }
+
+    let drawing = false;
+    let lastPt: [number, number] | null = null;
+    let queued = false;
+    const toCell = (e: PointerEvent): [number, number] => {
+      const r = board.getBoundingClientRect();
+      return [((e.clientX - r.left) / r.width) * GRID, ((e.clientY - r.top) / r.height) * GRID];
+    };
+    const schedule = () => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(() => { queued = false; runModel(); });
+    };
+
+    board.addEventListener("pointerdown", (e) => {
+      if (!model) return;
+      drawing = true;
+      manual = true;                 // reading is over; show the whole pass
+      try { board.setPointerCapture(e.pointerId); } catch {}
+      const p = toCell(e);
+      paint(p[0], p[1]);
+      lastPt = p;
+      schedule();
+      e.preventDefault();
+    });
+    board.addEventListener("pointermove", (e) => {
+      if (!drawing) return;
+      const p = toCell(e);
+      // Interpolate, so a fast stroke does not leave gaps.
+      if (lastPt) {
+        const steps = Math.ceil(Math.hypot(p[0] - lastPt[0], p[1] - lastPt[1]) * 2);
+        for (let s = 1; s <= steps; s++) {
+          const k = s / steps;
+          paint(lastPt[0] + (p[0] - lastPt[0]) * k, lastPt[1] + (p[1] - lastPt[1]) * k);
+        }
+      }
+      lastPt = p;
+      schedule();
+    });
+    const stop = () => { drawing = false; lastPt = null; };
+    board.addEventListener("pointerup", stop);
+    board.addEventListener("pointercancel", stop);
+    board.addEventListener("pointerleave", stop);
+
+    clearBtn.addEventListener("click", () => {
+      manual = true;
+      input = new Array(GRID * GRID).fill(0);
+      runModel();
+    });
+    sampleBtn.addEventListener("click", () => {
+      if (!model) return;
+      manual = true;
+      setInput(model.digits[Math.floor(Math.random() * model.digits.length)].px);
+    });
+
+    // ── Scroll ───────────────────────────────────────────────────────────────
     let ticking = false;
     const onScroll = () => {
-      if (ticking || reduce.matches) return;
+      if (ticking || manual || reduce.matches) return;
       ticking = true;
       requestAnimationFrame(() => {
         ticking = false;
@@ -321,16 +517,15 @@
       });
     };
 
-    // ── Boot: fetch the weights, pick a digit, show the rail ─────────────────
+    // ── Boot ─────────────────────────────────────────────────────────────────
     fetch("/models/mnist-mlp.json")
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((m: Model) => {
         model = m;
         readColours();
         resize();
-        // A different digit each load.
         setInput(m.digits[Math.floor(Math.random() * m.digits.length)].px);
-        progress = reduce.matches ? 1 : scrollProgress();
+        progress = scrollProgress();
         rail.hidden = false;
         draw();
 
@@ -339,13 +534,10 @@
         });
         new ResizeObserver(resize).observe(canvas);
         window.addEventListener("scroll", onScroll, { passive: true });
-        reduce.addEventListener("change", () => {
-          progress = reduce.matches ? 1 : scrollProgress();
-          draw();
-        });
+        reduce.addEventListener("change", draw);
       })
       .catch(() => {
-        // Weights unavailable: leave the rail hidden. Nothing else depends on it.
+        // Weights unavailable: the rail stays hidden. Nothing else depends on it.
       });
   }
 </script>
