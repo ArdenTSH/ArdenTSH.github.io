@@ -16,6 +16,12 @@ import { researchAreas, site, eden } from "../config/site";
     <h1>{site.name}</h1>
     {site.tagline && <p class="lead">{site.tagline}</p>}
     <p class="text-secondary intro" set:html={site.intro}></p>
+    <p class="hero-actions">
+      <a class="hero-action" href="/cv/Arden_Tsang_CV.pdf" download>
+        <Icon name="tabler:download" aria-hidden="true" /> Download my CV
+        <span class="hero-note">PDF</span>
+      </a>
+    </p>
   </Island>
 
   <a class="card-link build-link" href="/eden">
@@ -57,6 +63,26 @@ import { researchAreas, site, eden } from "../config/site";
 </PageShell>
 
 <style>
+  /* A quiet text link under the bio, not a card: the CV is a document, and the
+     cards below are places to go. Matches the action link on the Eden page. */
+  .hero-actions {
+    margin-top: var(--space-4);
+  }
+  .hero-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .hero-note {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-label);
+    color: var(--text-muted);
+  }
+  .hero-action :global(svg) {
+    width: 16px;
+    height: 16px;
+  }
   .intro {
     font-size: var(--text-md);
   }

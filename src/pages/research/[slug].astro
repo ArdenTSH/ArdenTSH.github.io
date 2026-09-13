@@ -19,7 +19,8 @@ import NeutrinoField from "../../components/NeutrinoField.astro";
 // AI-safety background: the RG coarse-graining staircase replaces the old SAEField.
 // SAEField.astro is kept in the repo (unused) so it's a one-line swap to restore.
 import RgStaircase from "../../components/RgStaircase.astro";
-import HorizonField from "../../components/HorizonField.astro";
+// HorizonField (the black-hole horizon) is unmounted for now; kept for restore.
+import GenesisField from "../../components/GenesisField.astro";
 // Interactive cluster figure (materials page). A Markdown paragraph reading
 // exactly `[[viewer:KEY]]` is swapped for <ClusterViewer> with the KEY's config
 // below, so the write-up stays plain Markdown and the figure stays removable.
@@ -29,6 +30,7 @@ import PipelineFigure from "../../components/PipelineFigure.astro";
 import QuantPipeline from "../../components/QuantPipeline.astro";
 import EventTriptych from "../../components/EventTriptych.astro";
 import EnergyChart from "../../components/EnergyChart.astro";
+import GnnEdgeFigure from "../../components/GnnEdgeFigure.astro";
 const VIEWERS: Record<string, { src: string; label: string }> = {
   c20: { src: "/structures/C20_fullerene.xyz", label: "C₂₀ fullerene cage, the swarm's best structure" },
 };
@@ -37,6 +39,7 @@ const FIGURES: Record<string, any> = {
   quantisation: QuantPipeline,    // neutrino: the two deployment routes
   events: EventTriptych,          // neutrino: the three interaction classes
   energy: EnergyChart,            // neutrino: energy against latency
+  gnn: GnnEdgeFigure,             // neutrino: one event through the edge classifier
 };
 import { Icon } from "astro-icon/components";
 import { getCollection } from "astro:content";
@@ -147,7 +150,10 @@ const islands = await Promise.all(
   {/* Gravity: a black-hole horizon seen from close, tiled in cells whose COUNT
       scales with area — the Bekenstein-Hawking area law, which is holography's
       founding fact and the it-from-qubit picture stated literally. */}
-  {area.slug === "gravity" && <HorizonField slot="background" />}
+  {/* Quantum gravity: the cosmic web alone, with no hole in front of it. No lens
+      and no shared camera, so this is the web exactly as it ran on Eden. Mount
+      HorizonField alongside it to put the black hole back. */}
+  {area.slug === "gravity" && <GenesisField slot="background" />}
   {/* AI safety: a real-space RG coarse-graining staircase — many microscopic
       degrees of freedom on the left collapse into a few collective ones on the right. */}
   {area.slug === "ai" && <RgStaircase slot="background" />}

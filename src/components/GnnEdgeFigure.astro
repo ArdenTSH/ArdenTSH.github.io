@@ -1,0 +1,64 @@
+---
+// <GnnEdgeFigure> — one event through the edge classifier, on the neutrino page.
+//
+// Three panels: the raw hits on one wire plane, the kNN-8 cluster graph coloured
+// by the network's merge probability, and the same graph carrying the truth
+// labels. Read left to right it is the whole task: hits become Pandora cluster
+// fragments, fragments become candidate edges, and the network decides which
+// edges join fragments of the same particle.
+//
+// Unlike the event triptych, this is a COLOUR figure with axes and colourbars, so
+// its white ground cannot be made transparent: the axis text would vanish in the
+// dark view and the colourmaps would have to survive an inversion. It sits on a
+// light plate in both themes instead, which is how a printed figure behaves.
+//
+// Source: MicroBooNE open data, v5 test event 273, CC νe. Made by the analysis in
+// the group's gnn_merge study; delete the component and the page loses the figure.
+const SRC = "/images/neutrino/gnn-edge-scores.png";
+---
+
+<figure class="gnn">
+  <div class="gnn-plate">
+    <img
+      src={SRC}
+      alt="Three panels for one simulated neutrino event. Left: 791 raw hits on one wire plane, coloured by charge. Centre: the kNN-8 cluster graph with each candidate edge coloured by the network's merge probability, blue for low and red for high. Right: the same graph with the true labels, 601 edges joining fragments of the same particle and 309 joining different particles."
+      width="1700"
+      height="567"
+      loading="lazy"
+      decoding="async"
+    />
+  </div>
+  <figcaption class="gnn-caption">
+    One event through the edge classifier. Hits are grouped into Pandora cluster
+    fragments, and the network scores every candidate edge between them; on this
+    view it reaches an edge F1 of 0.91. MicroBooNE open data, a CC νe test event.
+  </figcaption>
+</figure>
+
+<style>
+  .gnn {
+    margin: var(--space-4) 0 0;
+    max-width: var(--measure);
+  }
+  /* A light plate in both themes. The figure carries its own axes, labels and
+     colourbars, so it is read as a printed plate rather than as ink on the card. */
+  .gnn-plate {
+    background: #fff;
+    border: var(--hairline) solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    padding: var(--space-2);
+    overflow-x: auto;
+  }
+  .gnn-plate img {
+    display: block;
+    width: 100%;
+    height: auto;
+    /* Three wide panels: below this the detail is unreadable, so it scrolls. */
+    min-width: 520px;
+  }
+  .gnn-caption {
+    margin-top: var(--space-3);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+  }
+</style>

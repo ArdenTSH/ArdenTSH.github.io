@@ -76,11 +76,13 @@
     // ---- tunables ----------------------------------------------------------
     const SITES = 6000;          // degrees of freedom on the horizon
     const LINKS_PER_SITE = 3;    // nearest neighbours each site couples to
-    const CX = 1.02, CY = 0.60;  // sphere centre in viewport units
+    const CX = 1.24, CY = 0.60;  // sphere centre in viewport units
     const RW = 0.74, RH = 1.22;  // radius caps as fractions of width / height
     const SPIN = 0.020;          // rad/sec about the hole's own axis
     const TILT = 0.38;
-    const SKY = 1600, FOCAL = 1.9;
+    // No sky of its own. GenesisField draws the cosmic web behind this canvas and
+    // is bent by the same lens, so a second star field here would only double up.
+    const SKY = 0, FOCAL = 1.9;
     const EINSTEIN = 1.06;       // Einstein radius, in units of the shadow radius
     const MU_MAX = 8;            // cap on the lensing magnification
     const RING_BAND = 0.05;      // thickness of the counter-image ring
@@ -293,6 +295,8 @@
       ctx.clearRect(0, 0, W, H);
 
       const cam = mul(rotX(camPitch), rotY(camYaw));
+      // Published so the cosmic web behind this canvas turns with the hole.
+      (window as any).__horizonCam = [camYaw, camPitch];
       const surf = mul(cam, mul(rotX(TILT), rotY(t * SPIN)));
       const f = R * FOCAL;
       const col = siteCol();
@@ -354,7 +358,9 @@
       // ---- the hole ----------------------------------------------------------
       ctx.beginPath();
       ctx.arc(cx, cy, R, 0, TAU);
-      ctx.fillStyle = light ? "rgba(17,17,19,0.96)" : "rgba(0,0,0,0.72)";
+      // Fully opaque in both themes: a hole you can see the web through has no
+      // shadow, and the shadow is the only part of it that is real.
+      ctx.fillStyle = light ? "rgb(17,17,19)" : "rgb(0,0,0)";
       ctx.fill();
       ctx.beginPath();
       ctx.arc(cx, cy, R, 0, TAU);

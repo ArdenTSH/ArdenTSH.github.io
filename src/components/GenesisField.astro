@@ -18,9 +18,19 @@
 // Theme-adaptive (reads the CSS custom properties; redraws on data-theme change);
 // paused offscreen; reduced-motion renders one settled frame with no motion;
 // cleans up its RAF/observers under Astro client navigation.
+
+// Centre of the web in viewport units. Defaults to the middle of the screen; a
+// page can move it so the web shares a centre with whatever sits in front of it.
+// Gravitational lensing about (cx, cy). `lens` is the Einstein radius as a
+// MULTIPLE OF THE SHADOW RADIUS, which is the only scale that matters: set it
+// below 1 and every arc hides behind the hole. `holeRW`/`holeRH` must match the
+// hole's own radius caps so the two agree on that radius. Zero leaves the web
+// untouched and the other two are then ignored.
+interface Props { cx?: number; cy?: number; lens?: number; holeRW?: number; holeRH?: number; }
+const { cx = 0.5, cy = 0.5, lens = 0, holeRW = 0.74, holeRH = 1.22 } = Astro.props;
 ---
 
-<canvas class="genesis-field" aria-hidden="true"></canvas>
+<canvas class="genesis-field" aria-hidden="true" data-cx={String(cx)} data-cy={String(cy)} data-lens={String(lens)} data-hrw={String(holeRW)} data-hrh={String(holeRH)}></canvas>
 
 <style>
   .genesis-field {
@@ -43,6 +53,11 @@
 
 <script>
   const canvas = document.querySelector<HTMLCanvasElement>("canvas.genesis-field");
+  const CX = parseFloat(canvas?.dataset.cx ?? "0.5") || 0.5;
+  const CY = parseFloat(canvas?.dataset.cy ?? "0.5") || 0.5;
+  const LENS = parseFloat(canvas?.dataset.lens ?? "0") || 0;
+  const HRW = parseFloat(canvas?.dataset.hrw ?? "0.74") || 0.74;
+  const HRH = parseFloat(canvas?.dataset.hrh ?? "1.22") || 1.22;
   const ctx = canvas?.getContext("2d");
   if (canvas && ctx) {
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -228,6 +243,7 @@
     // Orientation: yaw turns about the vertical axis (auto + horizontal drag);
     // pitch tilts about the horizontal axis (vertical drag), clamped off the poles.
     let yaw = 0.6, pitch = 0.20;
+    let yawOff = 0, pitchOff = 0;   // the hole's camera, added on top of the drift
     const PITCH_MIN = -1.2, PITCH_MAX = 1.2;
 
     // offscreen buffers: galaxies render into `glow` (low-res); `halo` is a tiny
@@ -251,16 +267,37 @@
       haloW = Math.max(1, Math.round(W * GHALO));
       haloH = Math.max(1, Math.round(H * GHALO));
       halo.width = haloW; halo.height = haloH;
-      cx = W * 0.5; cy = H * 0.5;
+      cx = W * CX; cy = H * CY;
       focal = Math.min(W, H) * 1.05;
       szMin = light ? 0.65 : 0.5;
     };
     resize();
     window.addEventListener("resize", resize);
 
+    // Lensing about the hole, applied to SCREEN coordinates so the web keeps its own
+    // geometry and only its image is bent, which is what lensing is.
+    //
+    // The exact thin lens, theta = (b + sqrt(b^2 + 4 thE^2)) / 2, rather than the
+    // weak-field push thE^2/b. Two reasons. It is bounded: theta never falls below
+    // thE, so images crowd into a ring at that radius instead of the weak formula's
+    // divergence as b goes to zero. And it still tends to b far out, so the web is
+    // untouched away from the hole. Nothing needs clearing inside the ring because
+    // the opaque shadow already covers it.
+    let thE = 0;
+    const bendXY = (X: number, Y: number): [number, number] => {
+      if (thE <= 0) return [X, Y];
+      const dx = X - cx, dy = Y - cy;
+      const b = Math.hypot(dx, dy);
+      if (b < 0.5) return [X, Y];
+      const k = (0.5 * (b + Math.sqrt(b * b + 4 * thE * thE))) / b;
+      return [cx + dx * k, cy + dy * k];
+    };
+    const bend = (p: number[]): number[] => bendXY(p[0], p[1]);
+
     const project = () => {
-      const cyw = Math.cos(yaw), syw = Math.sin(yaw);
-      const cp = Math.cos(pitch), sp = Math.sin(pitch);
+      thE = LENS * Math.min(W * HRW, H * HRH);   // Einstein radius, from the shadow radius
+      const cyw = Math.cos(yaw + yawOff), syw = Math.sin(yaw + yawOff);
+      const cp = Math.cos(pitch + pitchOff), sp = Math.sin(pitch + pitchOff);
       const mx = -10, MX = W + 10, my = -10, MY = H + 10;
       for (let i = 0; i < N; i++) {
         const x = gx[i], y = gy[i], z = gz[i];
@@ -269,7 +306,8 @@
         const depth = (y * sp + z1 * cp) + D;    // pitch about X, then push back from camera
         if (depth <= NEAR) { pr[i] = 0; continue; }   // behind the camera → cull
         const s = focal / depth;
-        const sx = cx + x1 * s, sy = cy + (y * cp - z1 * sp) * s;
+        let sx = cx + x1 * s, sy = cy + (y * cp - z1 * sp) * s;
+        if (thE > 0) { const q = bendXY(sx, sy); sx = q[0]; sy = q[1]; }
         if (sx < mx || sx > MX || sy < my || sy > MY) { pr[i] = 0; continue; }
         px[i] = sx; py[i] = sy;
         pr[i] = Math.max(szMin, Math.min(SZMAX, 0.006 * s * (0.6 + gb[i])));
@@ -284,8 +322,8 @@
       const filGain = light ? 0.7 : (starry ? 1.6 : 1.2);   // silky connective fog (strong in both)
       ctx.clearRect(0, 0, W, H);
 
-      const cyw = Math.cos(yaw), syw = Math.sin(yaw);
-      const cp = Math.cos(pitch), sp = Math.sin(pitch);
+      const cyw = Math.cos(yaw + yawOff), syw = Math.sin(yaw + yawOff);
+      const cp = Math.cos(pitch + pitchOff), sp = Math.sin(pitch + pitchOff);
 
       // project node endpoints to SCREEN px once; reuse for the thread (glow) and
       // the wide silky fog strand (halo). al = brightness falloff with distance.
@@ -294,7 +332,7 @@
         const depth = (n[1] * sp + z1 * cp) + D;
         if (depth <= NEAR) return null;
         const s = focal / depth;
-        return [cx + x1 * s, cy + (n[1] * cp - z1 * sp) * s];
+        return bend([cx + x1 * s, cy + (n[1] * cp - z1 * sp) * s]);
       };
       const fil = starry ? STARRY : (glowAdd ? cool : ink);
       const filRGB = `${Math.round(fil[0])},${Math.round(fil[1])},${Math.round(fil[2])}`;
@@ -437,6 +475,19 @@
         yaw += SPIN + vel;
         vel *= FRICTION;
         if (Math.abs(vel) < 1e-5) vel = 0;
+      }
+      // When the hole is on the page it steers, but it does not stop the sky. Its
+      // camera only moves while someone drags it, so slaving the web to it outright
+      // froze the web whenever nobody was touching the page, while the hole's own
+      // surface kept turning on its axis. The drag is ADDED to the web's own drift.
+      // CAM_GAIN matches the two rates: the hole projects direction vectors while
+      // the web is pushed back from the camera by D, so the same angle moves the
+      // hole's sky about twice as far. Measured, not derived.
+      const bh = (window as any).__horizonCam;
+      if (bh) {
+        const CAM_GAIN = 2.1;
+        yawOff = bh[0] * CAM_GAIN;
+        pitchOff = Math.max(PITCH_MIN, Math.min(PITCH_MAX, bh[1] * CAM_GAIN)) - pitch;
       }
       draw();
     };

@@ -97,8 +97,16 @@ export const eden = {
   eyebrow: "What I'm building",
   title: "Eden",
   short: "Eden",
+  // The preprint itself, served from public/papers/. Swap `href` for the arXiv
+  // or proceedings URL once one exists and the local copy can go.
+  paper: {
+    title:
+      "Empirical verificational complexity: a research programme for scalable oversight and steering in autonomous laboratories",
+    note: "Preprint, under review",
+    href: "/papers/empirical-verificational-complexity.pdf",
+  },
   // Public artefacts linked from the /eden page header. The layer repository is
-  // private; add it here when it opens, and add the preprint when it is posted.
+  // private; add it here when it opens.
   repo: {
     label: "The benchmark: contract, targets, scorer and harness",
     href: "https://github.com/ArdenTSH/verification-layer-benchmark",

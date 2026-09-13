@@ -1,0 +1,441 @@
+---
+// <NavierStokesField> — Eden's background: streamlines of a BURGERS VORTEX, an
+// exact steady solution of the incompressible Navier-Stokes equations.
+//
+// In cylindrical coordinates, with strain rate α, circulation Γ and viscosity ν:
+//
+//     u_r = −α r                                  inward spiral
+//     u_θ = (Γ / 2πr) · (1 − exp(−r² / 2δ²))      swirl, δ = √(2ν/α)
+//     u_z = +2α z                                 axial stretching
+//
+// The radial inflow concentrates vorticity onto the axis while viscosity spreads
+// it, and the two balance at a Gaussian core of radius δ. That balance is the
+// whole point of the solution: it is the textbook example of vortex stretching
+// holding a filament together, and it is why the picture has exactly the two
+// features it does. Nothing here is a decorative swirl; every tracer is
+// integrated through that velocity field with RK4.
+//
+// Tracers are advected continuously and carry a short trail, so the flow reads as
+// motion rather than a static line drawing. Colour tracks vorticity, which is
+// ω_z ∝ exp(−r²/2δ²): the cool site accent out in the irrotational tail, the clay
+// red in the rotational core. A display gamma widens the visible warm region
+// without breaking the ordering.
+//
+// Contract, as with every field here: canvas 2D with a hand-rolled projection (no
+// WebGL, no library), pauses off-screen and on a hidden tab, ~30fps gate, one
+// static frame under reduced motion, theme-adaptive with a MutationObserver on
+// data-theme, full teardown on astro:before-swap, and removable — delete it and
+// Eden simply has a plain background.
+---
+
+<canvas class="ns-field" aria-hidden="true"></canvas>
+
+<style>
+  .ns-field {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    /* Drag the empty margins to orbit. touch-action: pan-y keeps vertical
+       scrolling intact on touch; only horizontal drags rotate there. */
+    pointer-events: auto;
+    cursor: grab;
+    touch-action: pan-y;
+  }
+  .ns-field.dragging {
+    cursor: grabbing;
+  }
+</style>
+
+<script>
+  const canvas = document.querySelector<HTMLCanvasElement>("canvas.ns-field");
+  const ctx = canvas?.getContext("2d");
+
+  if (canvas && ctx) {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+    // ── theme colours ───────────────────────────────────────────────────────
+    type RGB = [number, number, number];
+    const parseRGB = (str: string): RGB => {
+      const s = (str || "").trim();
+      if (s[0] === "#") {
+        let h = s.slice(1);
+        if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+        const n = parseInt(h, 16);
+        return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+      }
+      const m = s.match(/-?\d+(\.\d+)?/g);
+      return m ? [+m[0], +m[1], +m[2]] : [128, 128, 128];
+    };
+    let COOL: RGB = [77, 155, 230];
+    let WARM: RGB = [212, 117, 107];
+    let BG: RGB = [16, 16, 20];
+    let dark = true;
+
+    const c255 = (v: number) => (v < 0 ? 0 : v > 255 ? 255 : Math.round(v));
+    const mix3 = (a: RGB, b: RGB, t: number): RGB =>
+      [c255(a[0] + (b[0] - a[0]) * t), c255(a[1] + (b[1] - a[1]) * t), c255(a[2] + (b[2] - a[2]) * t)];
+    // One extra hue beyond the site's single accent, used only by this field, so
+    // the colormap has somewhere to travel between the accent and the clay red.
+    const TEAL: RGB = [56, 168, 176];
+    // A six-stop colormap, still a function of ONE physical quantity (vorticity),
+    // the way any scientific figure uses viridis rather than a flat two-tone ramp.
+    let STOPS: RGB[] = [];
+    const buildStops = () => {
+      STOPS = [
+        mix3(BG, COOL, 0.6),                   // deep, receding
+        COOL,
+        TEAL,
+        mix3(TEAL, WARM, 0.55),
+        WARM,
+        mix3(WARM, [255, 216, 172], 0.45),     // hot tan in the core
+      ];
+    };
+    const ramp = (t: number): RGB => {
+      const n = STOPS.length - 1;
+      const x = Math.min(0.9999, Math.max(0, t)) * n;
+      const i = Math.floor(x);
+      return mix3(STOPS[i], STOPS[i + 1], x - i);
+    };
+    const readColours = () => {
+      const cs = getComputedStyle(document.documentElement);
+      COOL = parseRGB(cs.getPropertyValue("--accent"));
+      WARM = parseRGB(cs.getPropertyValue("--danger"));
+      BG = parseRGB(cs.getPropertyValue("--bg"));
+      // "dark vs paper" by luminance, never by theme name.
+      dark = (0.2126 * BG[0] + 0.7152 * BG[1] + 0.0722 * BG[2]) < 128;
+      buildStops();
+    };
+    readColours();
+    const themeObs = new MutationObserver(readColours);
+    themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+    // ── the Burgers vortex ──────────────────────────────────────────────────
+    const ALPHA = 0.5;                       // strain rate
+    const NU = 0.010;                        // viscosity
+    const GAMMA = 18;                        // circulation
+    const DELTA = Math.sqrt((2 * NU) / ALPHA);   // core radius, √(2ν/α) ≈ 0.2
+    const D2 = 2 * DELTA * DELTA;
+    const R_MAX = 2.1;                       // seeding radius, core population
+    const R_FAR = 7.0;                       // seeding radius, far-field population
+    const Z_MAX = 3.0;                       // ejected beyond this
+
+    /** Velocity of the Burgers vortex at (x, y, z). */
+    const vel = (x: number, y: number, z: number): [number, number, number] => {
+      const r2 = x * x + y * y;
+      const r = Math.sqrt(r2) || 1e-6;
+      const ur = -ALPHA * r;
+      // (1 − e^(−r²/2δ²)) → r²/2δ² as r→0, so u_θ is solid-body in the core and
+      // Γ/2πr outside it. Written this way it stays finite on the axis.
+      const swirl = (GAMMA / (2 * Math.PI * r)) * (1 - Math.exp(-r2 / D2));
+      const cx = x / r, cy = y / r;          // radial unit vector
+      return [ur * cx - swirl * cy, ur * cy + swirl * cx, 2 * ALPHA * z];
+    };
+
+    const rk4 = (p: Float32Array, i: number, dt: number) => {
+      const x = p[i], y = p[i + 1], z = p[i + 2];
+      const k1 = vel(x, y, z);
+      const k2 = vel(x + (dt / 2) * k1[0], y + (dt / 2) * k1[1], z + (dt / 2) * k1[2]);
+      const k3 = vel(x + (dt / 2) * k2[0], y + (dt / 2) * k2[1], z + (dt / 2) * k2[2]);
+      const k4 = vel(x + dt * k3[0], y + dt * k3[1], z + dt * k3[2]);
+      p[i] += (dt / 6) * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]);
+      p[i + 1] += (dt / 6) * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]);
+      p[i + 2] += (dt / 6) * (k1[2] + 2 * k2[2] + 2 * k3[2] + k4[2]);
+    };
+
+    // ── tracers ─────────────────────────────────────────────────────────────
+    let N = 240;                             // set from viewport in layout()
+    const TRAIL = 220;                       // points kept per tracer
+    let pos = new Float32Array(0);           // current position, 3 per tracer
+    let trail = new Float32Array(0);         // ring buffer, TRAIL*3 per tracer
+    let head = new Int32Array(0);            // ring write index
+    let filled = new Int32Array(0);          // how much of the ring is valid
+    // Two populations. CORE tracers are released inside the vortex and do the
+    // coiling. FAR tracers are released well outside the frame and sweep in on
+    // the same solution's radial inflow, which is what fills the surrounding
+    // space: at large r the swirl falls off as Γ/2πr while the inflow grows as
+    // αr, so they arrive as long, nearly straight curves that bend late.
+    let far = new Uint8Array(0);
+
+    const seed = (i: number) => {
+      // Volume-uniform in an annulus, biased outward so the outer flow stays fed.
+      const r = far[i]
+        ? R_MAX * 1.35 + Math.sqrt(Math.random()) * (R_FAR - R_MAX * 1.35)
+        : DELTA * 1.2 + Math.sqrt(Math.random()) * (R_MAX - DELTA * 1.2);
+      const th = Math.random() * Math.PI * 2;
+      // Released near the mid-plane, which gives every tracer a long life and so
+      // a long ribbon. Along a streamline z(t) = z₀e^(2αt), so the column is kept
+      // populated at all heights by staggering AGE below, not by spreading the
+      // seed height; spreading the seed instead would buy short stubs.
+      const z = (Math.random() < 0.5 ? -1 : 1) * (0.028 + 0.075 * Math.random());
+      pos[i * 3] = r * Math.cos(th);
+      pos[i * 3 + 1] = r * Math.sin(th);
+      pos[i * 3 + 2] = z;
+      head[i] = 0;
+      filled[i] = 0;
+    };
+
+    const allocate = (n: number) => {
+      N = n;
+      pos = new Float32Array(N * 3);
+      trail = new Float32Array(N * TRAIL * 3);
+      head = new Int32Array(N);
+      filled = new Int32Array(N);
+      far = new Uint8Array(N);
+      for (let i = 0; i < N; i++) {
+        far[i] = i % 5 < 2 ? 1 : 0;          // ~40% far-field
+        seed(i);
+        // A tracer released near z≈0.03 takes ~285 frames to reach Z_MAX, so
+        // staggering over that spreads the population across the whole column.
+        const warm = Math.floor(Math.random() * (far[i] ? 420 : 285));
+        for (let k = 0; k < warm; k++) step1(i, 0.016);
+      }
+    };
+
+    const outside = (x: number, y: number, z: number) => {
+      const p = project(x, y, z);
+      if (!p) return true;
+      const mx = W * 0.25, my = H * 0.25;
+      return p.X < -mx || p.X > W + mx || p.Y < -my || p.Y > H + my;
+    };
+
+    /** True once the WHOLE ribbon has left the frame, head and tail. Testing the
+     *  head alone would recycle a tracer while its trail was still visible,
+     *  which is the blink this is here to prevent. */
+    const offscreen = (i: number) => {
+      if (W <= 1) return false;                // not laid out yet
+      if (!outside(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2])) return false;
+      const n = filled[i];
+      if (n < 2) return true;
+      const tail = ((head[i] - n + TRAIL) % TRAIL) * 3 + i * TRAIL * 3;
+      return outside(trail[tail], trail[tail + 1], trail[tail + 2]);
+    };
+
+    const step1 = (i: number, dt: number) => {
+      const v = vel(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]);
+      const speed = Math.hypot(v[0], v[1], v[2]);
+      const sub = Math.max(1, Math.min(6, Math.ceil((speed * dt) / 0.06)));
+      for (let k = 0; k < sub; k++) rk4(pos, i * 3, dt / sub);
+      const x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2];
+      const r = Math.hypot(x, y);
+      // |z| grows exponentially, so every tracer leaves eventually; the test is
+      // only about WHERE it is allowed to disappear. The last clause is a safety
+      // valve for a tracer the camera can somehow still see far out.
+      if (!isFinite(r) || r < DELTA * 0.05 ||
+          (Math.abs(z) > Z_MAX && offscreen(i)) || Math.abs(z) > Z_MAX * 4) {
+        seed(i);
+        return;
+      }
+      const h = head[i];
+      const base = (i * TRAIL + h) * 3;
+      trail[base] = x;
+      trail[base + 1] = y;
+      trail[base + 2] = z;
+      head[i] = (h + 1) % TRAIL;
+      if (filled[i] < TRAIL) filled[i]++;
+    };
+
+    // ── camera ──────────────────────────────────────────────────────────────
+    let yaw = 0.6, pitch = 0.26;
+    let spinV = 0, pitchV = 0;               // inertia after a fling
+    const SPIN = 0.0016;                     // idle rotation, rad/frame
+    // Orientation of the vortex AXIS on screen. Horizontal lays the column across
+    // the viewport; set false to stand it upright again. Nothing else depends on it.
+    const HORIZONTAL = true;
+    const SPAN = R_FAR + 1;                 // half-depth of the populated volume
+    const CAM = SPAN + 4, FOCAL = 3.6;      // beyond SPAN, so nothing is ever clipped
+    let W = 1, H = 1, dpr = 1;
+
+    const layout = () => {
+      dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      W = canvas.clientWidth; H = canvas.clientHeight;
+      canvas.width = Math.max(1, Math.round(W * dpr));
+      canvas.height = Math.max(1, Math.round(H * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const want = W < 900 ? 60 : W < 1500 ? 150 : 215;
+      if (want !== N || pos.length === 0) allocate(want);
+    };
+
+    // Project world → screen. Returns null behind the camera.
+    const scale = () => Math.min(W, H) * 0.95;
+    // Horizontal centre: right of the copy on wide screens, centred below that.
+    // Upright, the column is parked right of the copy. Laid across, it runs the
+    // full width and the cards simply sit in front of its left end.
+    const originX = () => (HORIZONTAL || W < 900 ? W * 0.5 : W * 0.68);
+    const project = (x: number, y: number, z: number) => {
+      const cy = Math.cos(yaw), sy = Math.sin(yaw);
+      const cp = Math.cos(pitch), sp = Math.sin(pitch);
+      const x1 = x * cy + y * sy;
+      const y1 = -x * sy + y * cy;
+      // z is the vortex axis; tilt it toward the viewer by pitch.
+      const y2 = z * cp - y1 * sp;
+      const z2 = z * sp + y1 * cp;
+      const d = CAM - z2;
+      if (d < 0.25) return null;
+      const k = (FOCAL * scale()) / d;
+      return HORIZONTAL
+        ? { X: originX() + y2 * k, Y: H / 2 - x1 * k, d, k }
+        : { X: originX() + x1 * k, Y: H / 2 - y2 * k, d, k };
+    };
+
+    // ── drawing ─────────────────────────────────────────────────────────────
+    // Scratch for one projected ribbon, reused every tube so there is no per-frame GC.
+    const PX = new Float32Array(TRAIL);
+    const PY = new Float32Array(TRAIL);
+    const PK = new Float32Array(TRAIL);
+    const PD = new Float32Array(TRAIL);
+    const PA = new Float32Array(TRAIL);
+
+    const BUCKETS = 22;
+    const order: number[][] = Array.from({ length: BUCKETS }, () => []);
+
+    const draw = () => {
+      ctx.clearRect(0, 0, W, H);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      for (const b of order) b.length = 0;
+      // Bucket by the depth of each tracer's head, so trails paint far → near
+      // without sorting every segment.
+      for (let i = 0; i < N; i++) {
+        const p = project(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]);
+        if (!p) continue;
+        const t = Math.min(BUCKETS - 1, Math.max(0, Math.floor(((p.d - (CAM - SPAN)) / (2 * SPAN)) * BUCKETS)));
+        order[BUCKETS - 1 - t].push(i);
+      }
+
+      for (const bucket of order) {
+        for (const i of bucket) {
+          const n = filled[i];
+          if (n < 3) continue;
+          const start = (head[i] - n + TRAIL) % TRAIL;
+          // Colour by vorticity, ω_z ∝ exp(−r²/2δ²), with a display gamma so the
+          // rotational core is legible rather than a single bright pixel.
+          const hx = pos[i * 3], hy = pos[i * 3 + 1];
+          const w = Math.pow(Math.exp(-(hx * hx + hy * hy) / D2), 0.8);
+          const [R, G, B] = ramp(w);
+
+          // Project the whole ribbon ONCE into scratch, then stroke it three
+          // times. Projecting per pass would treble the cost for nothing.
+          let m = 0;
+          for (let sIdx = 0; sIdx < n; sIdx++) {
+            const idx = (i * TRAIL + ((start + sIdx) % TRAIL)) * 3;
+            const p = project(trail[idx], trail[idx + 1], trail[idx + 2]);
+            if (!p) continue;
+            PX[m] = p.X; PY[m] = p.Y; PK[m] = p.k;
+            PD[m] = Math.max(0, Math.min(1, (CAM + SPAN - p.d) / (2 * SPAN)));
+            PA[m] = sIdx / n;                        // 0 tail … 1 head
+            m++;
+          }
+          if (m < 3) continue;
+
+          const CHUNK = Math.max(8, Math.round(m / 9));
+          // Two passes over the same ribbon:
+          //   0  body   — the tube itself.
+          //   1  spine  — a thin lighter core, so a tube reads as round rather
+          //               than as a flat band.
+          // Running each pass over the WHOLE ribbon, rather than per chunk, keeps
+          // the spine continuous instead of restarting at every chunk seam.
+          for (let pass = 0; pass < 2; pass++) {
+            let cs = 0;
+            ctx.beginPath();
+            ctx.moveTo(PX[0], PY[0]);
+            for (let sIdx = 1; sIdx < m; sIdx++) {
+              ctx.lineTo(PX[sIdx], PY[sIdx]);
+              if (sIdx - cs >= CHUNK || sIdx === m - 1) {
+                const mid = (cs + sIdx) >> 1;
+                const fade = Math.pow(PA[mid], 0.55);
+                const vis = (0.3 + 0.7 * PD[mid]) * (far[i] ? 0.55 : 1);
+                const body = Math.max(0.45, (0.8 + 2.2 * w) * (far[i] ? 0.6 : 1) * fade * PK[mid] * 0.0105);
+                if (pass === 0) {
+                  const mr = Math.round(BG[0] + (R - BG[0]) * vis);
+                  const mg = Math.round(BG[1] + (G - BG[1]) * vis);
+                  const mb = Math.round(BG[2] + (B - BG[2]) * vis);
+                  ctx.strokeStyle = `rgba(${mr},${mg},${mb},${Math.min(0.94, fade * 3.2)})`;
+                  ctx.lineWidth = body;
+                } else {
+                  if (body < 1.6) { cs = sIdx; ctx.beginPath(); ctx.moveTo(PX[sIdx], PY[sIdx]); continue; }
+                  const lift = dark ? 1 : -1;        // lighten on dark, darken on paper
+                  const hr = Math.round(BG[0] + (R - BG[0]) * vis) + 46 * lift;
+                  const hg = Math.round(BG[1] + (G - BG[1]) * vis) + 46 * lift;
+                  const hb = Math.round(BG[2] + (B - BG[2]) * vis) + 46 * lift;
+                  ctx.strokeStyle = `rgba(${c255(hr)},${c255(hg)},${c255(hb)},${0.75 * Math.min(1, fade * 3.2)})`;
+                  ctx.lineWidth = body * 0.34;
+                }
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(PX[sIdx], PY[sIdx]);
+                cs = sIdx;
+              }
+            }
+          }
+        }
+      }
+    };
+
+    // ── loop ────────────────────────────────────────────────────────────────
+    let visible = true, raf = 0, last = 0;
+    const DT = 0.016;
+
+    const frame = (now: number) => {
+      raf = requestAnimationFrame(frame);
+      if (!visible || document.hidden) return;
+      if (now - last < 33) return;               // ~30fps gate
+      last = now;
+      if (!dragging) {
+        yaw += SPIN + spinV;
+        pitch = Math.max(-1.15, Math.min(1.15, pitch + pitchV));
+        spinV *= 0.94;
+        pitchV *= 0.94;
+      }
+      for (let i = 0; i < N; i++) step1(i, DT);
+      draw();
+    };
+
+    // ── pointer: drag to orbit, with a light fling ──────────────────────────
+    let dragging = false, px = 0, py = 0;
+    canvas.addEventListener("pointerdown", (e) => {
+      dragging = true; px = e.clientX; py = e.clientY;
+      canvas.classList.add("dragging");
+      try { canvas.setPointerCapture(e.pointerId); } catch {}
+    });
+    canvas.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      const dx = (e.clientX - px) * 0.006;
+      const dy = (e.clientY - py) * 0.006;
+      yaw += dx;
+      pitch = Math.max(-1.15, Math.min(1.15, pitch + dy));
+      spinV = dx * 0.35;
+      pitchV = dy * 0.35;
+      px = e.clientX; py = e.clientY;
+      if (reduce.matches) draw();
+    });
+    const release = () => { dragging = false; canvas.classList.remove("dragging"); };
+    canvas.addEventListener("pointerup", release);
+    canvas.addEventListener("pointercancel", release);
+
+    // ── lifecycle ───────────────────────────────────────────────────────────
+    const ro = new ResizeObserver(() => { layout(); if (reduce.matches) draw(); });
+    ro.observe(canvas);
+    const io = new IntersectionObserver((es) => { visible = es[0].isIntersecting; }, { threshold: 0.01 });
+    io.observe(canvas);
+
+    layout();
+
+    if (reduce.matches) {
+      draw();                                   // one static frame, still draggable
+    } else {
+      raf = requestAnimationFrame(frame);
+    }
+
+    const cleanup = () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      io.disconnect();
+      themeObs.disconnect();
+      document.removeEventListener("astro:before-swap", cleanup);
+    };
+    document.addEventListener("astro:before-swap", cleanup);
+  }
+</script>

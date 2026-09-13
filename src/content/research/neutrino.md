@@ -102,6 +102,13 @@ detector in its structure does not spend capacity learning that geometry from
 scratch, which is the property that matters when the parameter budget is set by a
 two-watt chip.
 
+The task itself is a classification over edges. Hits are grouped into Pandora
+cluster fragments, every fragment is joined to its nearest neighbours, and the
+network decides which of those candidate edges join fragments left by the same
+particle. Reconstruction then follows from the edges that survive.
+
+[[figure:gnn]]
+
 ### Reconstruction and interpretability
 
 On the reconstruction side I run Pandora inside LArSoft and write the ROOT

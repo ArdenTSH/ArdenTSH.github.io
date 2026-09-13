@@ -1,11 +1,13 @@
 ---
 // Eden — the venture page. Standalone (NOT a research direction); all copy lives
-// in `eden` in src/config/site.ts. Background: the cosmic-web scene reused from
-// the cosmology page (GenesisField). Opaque islands keep the copy legible over
-// it, and the page still works with the background removed.
+// in `eden` in src/config/site.ts. Background: streamlines of a Burgers vortex,
+// a collision event (ColliderField), moved here from the retired CV page. Opaque
+// islands keep the copy legible over it, and the page still works with the
+// background removed. GenesisField, the cosmic web that used to sit here, is
+// kept in the repo so it is a one-line swap back.
 import PageShell from "../layouts/PageShell.astro";
 import Island from "../components/Island.astro";
-import GenesisField from "../components/GenesisField.astro";
+import ColliderField from "../components/ColliderField.astro";
 import { Icon } from "astro-icon/components";
 import { eden } from "../config/site";
 ---
@@ -16,14 +18,27 @@ import { eden } from "../config/site";
   description="Eden: scalable oversight for autonomous science. A model proposes the checks, a small trusted kernel decides."
   ogImage="/images/cosmos-grant.jpg"
 >
-  <GenesisField slot="background" />
+  <ColliderField slot="background" />
   <Island as="header">
     <p class="eyebrow">{eden.eyebrow}</p>
     <h1>{eden.title}</h1>
     <p class="lead">{eden.lead}</p>
     {
-      eden.repo && (
+      eden.paper && (
         <p class="eden-actions">
+          <a class="eden-action" href={eden.paper.href} download>
+            <Icon name="tabler:file-text" aria-hidden="true" />
+            <span>
+              {eden.paper.title}
+              <span class="eden-note">{eden.paper.note}</span>
+            </span>
+          </a>
+        </p>
+      )
+    }
+    {
+      eden.repo && (
+        <p class="eden-actions eden-actions--tight">
           <a class="eden-action" href={eden.repo.href} target="_blank" rel="noopener">
             <Icon name="tabler:brand-github" aria-hidden="true" /> {eden.repo.label}
           </a>
@@ -103,6 +118,22 @@ import { eden } from "../config/site";
     display: inline-flex;
     align-items: center;
     gap: 6px;
+  }
+  /* The paper sits above the repository line, so the pair reads as one block. */
+  .eden-actions--tight {
+    margin-top: var(--space-2);
+  }
+  .eden-action {
+    align-items: baseline;
+  }
+  /* "Preprint, under review" rides under the title rather than beside it, so the
+     title stays one unbroken link target. */
+  .eden-note {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-label);
+    color: var(--text-muted);
   }
   .eden-action :global(svg) {
     width: 16px;

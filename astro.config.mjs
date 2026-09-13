@@ -8,6 +8,11 @@ import sitemap from '@astrojs/sitemap';
 export default defineConfig({
   site: 'https://ardentsh.github.io',
   integrations: [icon(), sitemap()],
-  // The cosmology direction was re-scoped to quantum gravity; keep the old URL alive.
-  redirects: { '/research/cosmology': '/research/gravity' },
+  // The cosmology direction was re-scoped to quantum gravity; keep the old URL
+  // alive. /cv is retired as a page, but the formatted PDF is still the CV, so
+  // the old URL serves that instead of 404ing.
+  redirects: {
+    '/research/cosmology': '/research/gravity',
+    '/cv': '/cv/Arden_Tsang_CV.pdf',
+  },
 });

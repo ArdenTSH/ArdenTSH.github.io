@@ -74,8 +74,8 @@ const { title, description, active = "", ogImage } = Astro.props;
   {/* Grid toggle removed from the UI — the spacetime grid is disabled in
       BlackHole.astro. Import + component kept so it's a one-line re-enable. */}
   {/* {active === "home" && <GridToggle />} */}
-  {/* Collider controls: CV only (colour toggle + restart for the collision bg). */}
-  {active === "cv" && <ColliderControls />}
+  {/* Collider controls: Eden only (colour toggle + restart for the collision bg). */}
+  {active === "eden" && <ColliderControls />}
   {/* Neutrino colour-coding control: research/neutrino only. */}
   {active === "neutrino" && <NeutrinoControls />}
   {/* Starry-mode toggle moved with the cosmic-web background to /eden.
