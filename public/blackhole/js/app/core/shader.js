@@ -95,14 +95,16 @@ function Shader(mustacheTemplate) {
             edge_threshold:  0.07,
             edge_softness:   0.10,
             sepia_amount:    0.30,                // less wash now the ink is grey
-            hatch_amount:    0.28,
+            hatch_amount:    0.0,    // was 0.28 — a SCREEN-SPACE cross-hatch that never lensed;
+                                     // the minor grid above is the lensed replacement for that texture
             hatch_scale:     6.0,
             paper_grain:     0.05,
             line_width:      1.3,
             overall_strength:0.85,
             stroke_grain:    0.80,  // how broken-up the pencil strokes look (0..1)
             star_fill:       1.00,  // fill bright points as solid, consistent ink dots
-            grid_strength:   0.30,  // notebook graph-paper grid on the lensed sky (sketch only)
+            grid_ink:        0.85,  // how dark the lensed lattice inks (0..1)
+            grid_strength:   0.45,  // notebook graph-paper grid on the lensed sky (sketch only)
             disk_line_scale: 3.5,   // accretion disk stroke THICKNESS (dilation band radius scale)
             disk_ink_boost:  1.0    // extra ink weight on those bold disk strokes
         },

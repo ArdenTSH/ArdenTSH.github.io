@@ -5,6 +5,12 @@
 
 vec4 trace_ray(vec3 ray) {
     vec3 pos = cam_pos;
+    // Lensed graph-paper mask, handed to the notebook sketch pass in alpha. The
+    // post-pass cannot tell a grid ridge from a star by brightness alone, and it
+    // treats bright isolated points as star GRAINS: it erases their stroke and
+    // repaints them as binarised dots. That is what turned the lensed lattice into
+    // chains of blobs. Tagging it lets the sketch pass ink it as a line.
+    float grid_tag = 0.0;
 
     {{#aberration}}
     vec3 aberration_vel = cam_vel * max(look_aberration_strength, 0.0);
@@ -947,14 +953,26 @@ vec4 trace_ray(vec3 ray) {
         // them into constant-width pencil strokes — lensing bends the line, not
         // its weight. bg_grid_strength is 0 in photoreal mode, so sketch-only.
         if (bg_grid_strength > 0.001) {
-            vec2 gcoord = tex_coord * 8.0;                   // cells across the sky UV (fewer = bigger squares)
-            vec2 gdist  = abs(fract(gcoord) - 0.5);          // 0 at cell centre, 0.5 at the lines
-            // VERY thin spikes (not a wide band) so the Sobel inks single fine
-            // pencil strokes that break up rough — a sketched grid, not a
-            // distorting sheet of paper. Narrow the band -> thinner line.
-            vec2 gband  = smoothstep(0.4985, 0.5, gdist);
-            float grid  = max(gband.x, gband.y);
-            color.rgb  += vec3(grid) * bg_grid_strength * vol_transmittance;
+            // Graph paper on the LENSED sky: MAJOR cells with MINOR squares
+            // subdividing them, both built from the gravitationally-bent exit
+            // direction, so the whole lattice (squares included) curves around the
+            // hole and packs up at the Einstein ring. The small squares belong to
+            // the same lensed sheet as the lines rather than sitting flat on top.
+            //
+            // The bands are several times wider than the old hairline on purpose.
+            // The sketch post-pass multiplies every stroke by a graphite "tooth",
+            // which chews a one-pixel ridge into dashes and blobs; a few pixels of
+            // ridge survives that and still reads as one continuous pencil line.
+            vec2 dmaj = abs(fract(tex_coord *  8.0) - 0.5);
+            vec2 dmin = abs(fract(tex_coord * 16.0) - 0.5);
+            vec2 bmaj = smoothstep(0.4955, 0.4992, dmaj);
+            vec2 bmin = smoothstep(0.4895, 0.4975, dmin);
+            float grid = max(max(bmaj.x, bmaj.y), max(bmin.x, bmin.y) * 0.55);
+            // Deliberately does NOT brighten the sky: in the notebook tone ramp a
+            // bright ridge maps toward PAPER, so the line vanished into the page and
+            // only showed as edge detection and star dots. The lattice is carried as
+            // a MASK and inked directly by the sketch pass instead.
+            grid_tag = max(grid_tag, grid * vol_transmittance);
         }
     }
 
@@ -963,6 +981,6 @@ vec4 trace_ray(vec3 ray) {
     // photoreal screen, but the notebook 'sketch' post-pass reads it (via sceneRT)
     // to ink the shadow dark graphite instead of letting it fade to paper.
     vec4 traced = color*ray_intensity;
-    traced.a = shadow_capture ? 1.0 : 0.0;
+    traced.a = shadow_capture ? 1.0 : 0.25 * clamp(grid_tag, 0.0, 1.0);
     return traced;
 }

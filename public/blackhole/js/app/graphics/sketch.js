@@ -38,6 +38,7 @@ function setupSketch() {
         'uniform float starFill;',
         'uniform float diskLineScale;',
         'uniform float diskInkBoost;',
+        'uniform float gridInk;',
         'varying vec2 vUv;',
         '',
         'float luma(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }',
@@ -88,7 +89,13 @@ function setupSketch() {
         '        luma(texture2D(tDiffuse, vUv + texel*vec2(-5.0, 5.0)).rgb) +',
         '        luma(texture2D(tDiffuse, vUv + texel*vec2( 5.0,-5.0)).rgb) +',
         '        luma(texture2D(tDiffuse, vUv + texel*vec2(-5.0,-5.0)).rgb));',
-        '    float pointy = smoothstep(0.04, 0.16, mc - far);     // bright isolated = star',
+        '    // trace_ray tags the lensed graph-paper grid in alpha (0.25). Without',
+        '    // this the thin bright ridge trips the isolated-bright-point test and the',
+        '    // lattice gets erased as a stroke and repainted as a chain of star dots,',
+        '    // so the lensing reads as drifting grains instead of bending lines.',
+        '    float aTag   = texture2D(tDiffuse, vUv).a;',
+        '    float gridTag = clamp(aTag * 4.0, 0.0, 1.0) * (1.0 - smoothstep(0.30, 0.45, aTag));',
+        '    float pointy = smoothstep(0.04, 0.16, mc - far) * (1.0 - gridTag); // bright isolated = star',
         '    float star   = pointy * smoothstep(0.05, 0.16, mc);',
         '    float D      = smoothstep(0.04, 0.18, far) * (1.0 - pointy); // bright EXTENDED = disk',
         '    float tooth  = 0.45 + 0.65 * vnoise(px*0.6) * (0.5 + 0.7*hash21(px*1.7));',
@@ -156,6 +163,13 @@ function setupSketch() {
         '    // ink, not a brightness-dependent grey.',
         '    col = mix(col, inkColor, smoothstep(0.16, 0.34, star) * starFill);',
         '',
+        '    // ---- the LENSED spacetime lattice, drawn straight from its tag ----',
+        '    // Its width is set in trace_ray (in sky-UV terms), so lensing bends and',
+        '    // bunches the line without ever breaking it. Only a light touch of tooth:',
+        '    // enough to read as pencil, never enough to open a gap.',
+        '    float gridLine = gridTag * gridInk * mix(1.0, tooth, strokeGrain * 0.30);',
+        '    col = mix(col, inkColor, clamp(gridLine, 0.0, 1.0));',
+        '',
         '    // ---- paper grain over everything (screen-space, stable under motion) ',
         '    float grain = (hash21(px) - 0.5) * paperGrain;',
         '    col += grain;',
@@ -208,7 +222,8 @@ function setupSketch() {
             strokeGrain:     { type: 'f',  value: 0.80 },
             starFill:        { type: 'f',  value: 1.00 },
             diskLineScale:   { type: 'f',  value: 3.5 },
-            diskInkBoost:    { type: 'f',  value: 1.0 }
+            diskInkBoost:    { type: 'f',  value: 1.0 },
+            gridInk:         { type: 'f',  value: 0.85 }
         },
         vertexShader: ppVertexShader,
         fragmentShader: sketchFS,
@@ -244,6 +259,7 @@ function setupSketch() {
             if (s.edge_softness   !== undefined) u.edgeSoftness.value    = s.edge_softness;
             if (s.sepia_amount    !== undefined) u.sepiaAmount.value     = s.sepia_amount;
             if (s.hatch_amount    !== undefined) u.hatchAmount.value     = s.hatch_amount;
+            if (s.grid_ink        !== undefined) u.gridInk.value         = s.grid_ink;
             if (s.hatch_scale     !== undefined) u.hatchScale.value      = s.hatch_scale;
             if (s.paper_grain     !== undefined) u.paperGrain.value      = s.paper_grain;
             if (s.line_width      !== undefined) u.lineWidth.value       = s.line_width;
