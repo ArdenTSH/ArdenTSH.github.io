@@ -266,6 +266,20 @@ const islands = await Promise.all(
   .research-section :global(h3 ~ ul li)::marker { color: var(--text-faint); }
   .research-section :global(h3 ~ pre) { margin-top: var(--space-4); }
 
+  /* A section island whose parts are h4 — the gravity routes, which are kept in
+     ONE box because h4 does not split an island the way h3 does. */
+  .research-section :global(h4) {
+    margin-top: var(--space-5);
+    margin-bottom: var(--space-2);
+    font-size: var(--text-md);
+    font-weight: var(--weight-medium);
+    color: var(--text-primary);
+  }
+  .research-section :global(h4 ~ p) {
+    font-size: var(--text-base);
+    margin-top: var(--space-3);
+  }
+
   /* Part island — a sub-heading + body prose (why / problem / method / …). */
   .research-part :global(h3) { margin-bottom: var(--space-3); }
   .research-part :global(h4) {
