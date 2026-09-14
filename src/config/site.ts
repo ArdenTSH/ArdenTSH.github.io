@@ -122,6 +122,11 @@ export const eden = {
     // The grant card, shown once at the foot of the page. Remove this line and
     // the figure disappears; nothing else depends on it.
     card: "/images/cosmos-grant.jpg",
+    // The dark-view twin: the same card with only its near-grey pixels inverted,
+    // so the white ground goes black and the ink goes light while every blue
+    // keeps exactly the light-mode colour. A CSS filter cannot do that, because
+    // invert() darkens the blues along with everything else.
+    cardDark: "/images/cosmos-grant-dark.jpg",
     cardAlt:
       "Cosmos Institute and FIRE grant card: Grounded Verification Benchmark, Arden Tsang, AI x Truth-Seeking grant winner.",
   },

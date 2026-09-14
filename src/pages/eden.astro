@@ -95,14 +95,18 @@ import { eden } from "../config/site";
   {
     eden.funding?.card && (
       <Island as="section" class="eden-card">
-        <a href={eden.funding.announcement} target="_blank" rel="noopener">
-          <img
-            src={eden.funding.card}
-            alt={eden.funding.cardAlt}
-            width="1400"
-            height="788"
-            loading="lazy"
-            decoding="async"
+        <a
+          href={eden.funding.announcement}
+          target="_blank"
+          rel="noopener"
+          aria-label={eden.funding.cardAlt}
+        >
+          {/* A background box rather than an <img>: the two themes need two
+              different files, and a browser fetches only the one whose rule
+              applies, where two <img> tags would download both. */}
+          <span
+            class="eden-card-img"
+            style={`--card-light:url(${eden.funding.card});--card-dark:url(${eden.funding.cardDark})`}
           />
         </a>
       </Island>
@@ -167,17 +171,18 @@ import { eden } from "../config/site";
 
   /* The grant card: a plain figure at the foot, no frame and no caption, so it
      reads as an artefact rather than a badge. */
-  .eden-card img {
+  .eden-card-img {
     display: block;
     width: 100%;
-    height: auto;
+    aspect-ratio: 1400 / 788;
+    background: var(--card-light) center / cover no-repeat;
     border-radius: var(--radius-sm);
   }
-  /* In the dark view the card inverts: its white ground goes black and its dark
-     ink goes white. The 180 degree hue rotation puts the colour back, so the
-     blues stay blue. Measured on this file, the title blue rgb(46,123,246)
-     lands on rgb(70,147,255), a shift of about two degrees of hue. */
-  :global(:root[data-theme="dark"]) .eden-card img {
-    filter: invert(1) hue-rotate(180deg);
+  /* The dark view gets its own file instead of a filter. invert() would turn the
+     white ground black correctly, but it darkens the blues with it: the pale
+     blue of the photo panel landed on a near-black navy. The twin inverts only
+     the near-grey pixels, so every blue keeps its light-mode value. */
+  :global(:root[data-theme="dark"]) .eden-card-img {
+    background-image: var(--card-dark);
   }
 </style>
