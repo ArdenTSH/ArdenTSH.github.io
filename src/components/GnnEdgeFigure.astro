@@ -1,44 +1,65 @@
 ---
 // <GnnEdgeFigure> — one event through the edge classifier, on the neutrino page.
 //
-// Three panels, laid out and labelled the same way as <EventTriptych> above it.
-// The labels are HTML, not baked into the image, which is the point: the centre
-// and right panels are THE SAME GRAPH, one carrying the network's scores and one
-// the truth, and without a caption on each they read as a duplicate.
+// Three panels, laid out and boxed the same way as <EventTriptych> above it. The
+// labels are HTML, not baked into the image, which is the point: the centre and
+// right panels are THE SAME GRAPH, one carrying the network's scores and one the
+// truth, and without a caption on each they read as a duplicate.
 //
-// The source render was a matplotlib figure with a title, axis labels, tick
-// labels, colourbars and two legends on a white ground. All of it is cropped to
-// the plot interiors, with the legend boxes painted out (they are opaque, so
-// nothing is lost under them). With no type left in the image, the white ground
-// can be removed and the ink sits on the island rather than on a white plate.
+// SCALE. All three axes are exactly 750 px wide in the source render, so the
+// panels are already on one scale; they are cropped to identical boxes and left
+// unresampled. The centre and right panels therefore line up node for node, which
+// is what makes "scored against true" legible as a comparison.
 //
-// Two variants per panel, swapped on the theme. The dark one lifts only the
-// near-black cluster nodes; inverting every neutral pixel also inverted the
-// colourmap's own pale centre, and the uncertain edges vanished into the page.
+// KEYS. The source colourbars and legends are matplotlib type, a few pixels tall
+// once the figure is this size, so they are cropped away and the keys rebuilt
+// below each panel in site type. The gradient stops are SAMPLED from the source
+// colourbars, so the key shows the same colours the panel does.
 //
-// All three panels share axis limits in the source, so they are cropped
-// identically and stay comparable.
+// The white ground is removed so the ink sits on the island rather than on a
+// white plate. Two variants per panel, swapped on the theme: the dark one lifts
+// only the neutral near-black cluster nodes, because inverting everything would
+// invert the colourmaps and destroy what the colours mean.
 //
 // Source: MicroBooNE open data, v5 test event 273, CC νe, from the group's
 // gnn_merge study. Delete the component and the page loses the figure.
 const PANELS = [
   {
-    key: "hits",
+    slug: "hits",
     tag: "the hits",
-    desc: "791 hits on one wire plane, coloured by charge",
-    alt: "Raw detector hits on a single wire plane, a sparse diagonal track with scattered background hits.",
+    desc: "791 hits on one wire plane, coloured by charge.",
+    alt: "Raw detector hits on a single wire plane: a sparse diagonal track with scattered background hits.",
+    key: {
+      kind: "bar" as const,
+      stops: "#443882, #31678e, #218f8d, #34b679, #8ed645, #fbe723",
+      lo: "low charge",
+      hi: "high",
+    },
   },
   {
-    key: "scored",
+    slug: "scored",
     tag: "the network",
-    desc: "910 candidate edges, blue unlikely to red likely",
-    alt: "The cluster graph, with each candidate edge coloured by the network's merge probability, blue for low and red for high.",
+    desc: "910 candidate edges, each scored on whether it should merge.",
+    alt: "The cluster graph, every candidate edge coloured by the network's merge probability, blue for low and red for high.",
+    key: {
+      kind: "bar" as const,
+      stops: "#6e90f2, #a9c6fd, #dbdcde, #f7b99e, #e8765c, #b50927",
+      lo: "0",
+      hi: "1",
+    },
   },
   {
-    key: "truth",
+    slug: "truth",
     tag: "the truth",
-    desc: "601 edges within a particle, 309 between",
-    alt: "The same cluster graph with true labels, red where an edge joins fragments of the same particle and blue where it does not.",
+    desc: "The same graph, labelled. 601 edges within a particle, 309 between.",
+    alt: "The same cluster graph with true labels, red where an edge joins fragments of one particle and blue where it does not.",
+    key: {
+      kind: "swatch" as const,
+      items: [
+        { c: "#b01c33", label: "same particle" },
+        { c: "#2c6daf", label: "different" },
+      ],
+    },
   },
 ];
 ---
@@ -51,25 +72,49 @@ const PANELS = [
           <div class="gnn-frame">
             <img
               class="gnn-img gnn-img--light"
-              src={`/images/neutrino/gnn-${p.key}.png`}
+              src={`/images/neutrino/gnn-${p.slug}.png`}
               alt={p.alt}
-              width="460"
-              height="585"
+              width="743"
+              height="943"
               loading="lazy"
               decoding="async"
             />
             <img
               class="gnn-img gnn-img--dark"
-              src={`/images/neutrino/gnn-${p.key}-dark.png`}
+              src={`/images/neutrino/gnn-${p.slug}-dark.png`}
               alt=""
               aria-hidden="true"
-              width="460"
-              height="585"
+              width="743"
+              height="943"
               loading="lazy"
               decoding="async"
             />
           </div>
           <span class="gnn-tag">{p.tag}</span>
+
+          {p.key.kind === "bar" ? (
+            <div class="gnn-key">
+              <span
+                class="gnn-bar"
+                style={`background: linear-gradient(to right, ${p.key.stops});`}
+                aria-hidden="true"
+              />
+              <span class="gnn-ends">
+                <span>{p.key.lo}</span>
+                <span>{p.key.hi}</span>
+              </span>
+            </div>
+          ) : (
+            <div class="gnn-key">
+              {p.key.items.map((it) => (
+                <span class="gnn-swatch">
+                  <span class="gnn-dash" style={`background: ${it.c};`} aria-hidden="true" />
+                  {it.label}
+                </span>
+              ))}
+            </div>
+          )}
+
           <span class="gnn-desc">{p.desc}</span>
         </div>
       ))
@@ -77,9 +122,9 @@ const PANELS = [
   </div>
   <figcaption class="gnn-caption">
     One event through the edge classifier. Hits are grouped into cluster
-    fragments and each fragment joined to its nearest neighbours; the network
-    then scores every edge between them. Centre and right are the same graph,
-    scored and true. On this view it reaches an edge F1 of 0.91.
+    fragments and each fragment joined to its nearest neighbours; the network then
+    scores every edge between them. Centre and right are the same graph, scored
+    and true, on the same axes. On this view it reaches an edge F1 of 0.91.
   </figcaption>
 </figure>
 
@@ -123,6 +168,45 @@ const PANELS = [
     letter-spacing: var(--tracking-label);
     color: var(--accent);
   }
+
+  /* ── The colour keys, rebuilt from the source colourbars ─────────────────── */
+  .gnn-key {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin: 4px 0 2px;
+  }
+  .gnn-bar {
+    display: block;
+    height: 6px;
+    border-radius: 2px;
+    border: var(--hairline) solid var(--border);
+  }
+  .gnn-ends {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-2);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-label);
+    color: var(--text-muted);
+  }
+  .gnn-swatch {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-label);
+    color: var(--text-muted);
+  }
+  .gnn-dash {
+    flex: 0 0 auto;
+    width: 14px;
+    height: 3px;
+    border-radius: 1px;
+  }
+
   .gnn-desc {
     font-size: var(--text-sm);
     color: var(--text-secondary);
