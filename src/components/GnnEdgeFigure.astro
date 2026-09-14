@@ -7,31 +7,41 @@
 // fragments, fragments become candidate edges, and the network decides which
 // edges join fragments of the same particle.
 //
-// Unlike the event triptych, this is a COLOUR figure with axes and colourbars, so
-// its white ground cannot be made transparent: the axis text would vanish in the
-// dark view and the colourmaps would have to survive an inversion. It sits on a
-// light plate in both themes instead, which is how a printed figure behaves.
+// EVERY WORD IS STRIPPED. The source render carried a title, axis labels, tick
+// labels, colourbars and two legends; all of it was cropped to the plot
+// interiors and the legend boxes, which are opaque and hide nothing, painted
+// out. That is what lets the figure sit on the page rather than on a white
+// plate: with no type in it, there is nothing that has to stay dark to be read.
+// The caption below carries what the labels used to say.
 //
-// Source: MicroBooNE open data, v5 test event 273, CC νe. Made by the analysis in
-// the group's gnn_merge study; delete the component and the page loses the figure.
-const SRC = "/images/neutrino/gnn-edge-scores.png";
+// Two variants, swapped on the theme. Both have the white ground removed by
+// un-premultiplying, so the ink sits directly on the island. The dark variant
+// lifts ONLY the near-black cluster nodes to pale; inverting every neutral pixel
+// also inverted the colourmap's own pale centre, and the uncertain edges, which
+// are the interesting ones, disappeared against the page.
+//
+// Source: MicroBooNE open data, v5 test event 273, CC νe, from the group's
+// gnn_merge study. Delete the component and the page simply loses the figure.
+const ALT =
+  "Three panels for one simulated neutrino event. Left: the raw hits on one wire " +
+  "plane, coloured by charge. Centre: the cluster graph, with every candidate edge " +
+  "coloured by the network's merge probability, blue for low and red for high. " +
+  "Right: the same graph with the true labels, red where an edge joins fragments of " +
+  "the same particle and blue where it does not.";
 ---
 
 <figure class="gnn">
-  <div class="gnn-plate">
-    <img
-      src={SRC}
-      alt="Three panels for one simulated neutrino event. Left: 791 raw hits on one wire plane, coloured by charge. Centre: the kNN-8 cluster graph with each candidate edge coloured by the network's merge probability, blue for low and red for high. Right: the same graph with the true labels, 601 edges joining fragments of the same particle and 309 joining different particles."
-      width="1700"
-      height="567"
-      loading="lazy"
-      decoding="async"
-    />
-  </div>
+  <img class="gnn-img gnn-img--light" src="/images/neutrino/gnn-edge-scores.png"
+       alt={ALT} width="1450" height="601" loading="lazy" decoding="async" />
+  <img class="gnn-img gnn-img--dark" src="/images/neutrino/gnn-edge-scores-dark.png"
+       alt="" aria-hidden="true" width="1450" height="601" loading="lazy" decoding="async" />
   <figcaption class="gnn-caption">
-    One event through the edge classifier. Hits are grouped into Pandora cluster
-    fragments, and the network scores every candidate edge between them; on this
-    view it reaches an edge F1 of 0.91. MicroBooNE open data, a CC νe test event.
+    One event through the edge classifier. Left, 791 raw hits on a single wire
+    plane. Centre, the same hits grouped into cluster fragments and joined to
+    their nearest neighbours, with each of the 910 candidate edges coloured by
+    the network's merge probability, blue for low and red for high. Right, the
+    truth: 601 edges join fragments of one particle, 309 join different ones. On
+    this view the network reaches an edge F1 of 0.91.
   </figcaption>
 </figure>
 
@@ -39,23 +49,21 @@ const SRC = "/images/neutrino/gnn-edge-scores.png";
   .gnn {
     margin: var(--space-4) 0 0;
     max-width: var(--measure);
-  }
-  /* A light plate in both themes. The figure carries its own axes, labels and
-     colourbars, so it is read as a printed plate rather than as ink on the card. */
-  .gnn-plate {
-    background: #fff;
-    border: var(--hairline) solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    padding: var(--space-2);
+    /* Three wide panels: below this the detail stops being readable. */
     overflow-x: auto;
   }
-  .gnn-plate img {
+  .gnn-img {
     display: block;
     width: 100%;
     height: auto;
-    /* Three wide panels: below this the detail is unreadable, so it scrolls. */
-    min-width: 520px;
+    min-width: 460px;
   }
+  /* One variant per theme. The site sets data-theme explicitly, so this follows
+     the toggle rather than the operating system. */
+  .gnn-img--dark { display: none; }
+  :global(:root[data-theme="dark"]) .gnn-img--light { display: none; }
+  :global(:root[data-theme="dark"]) .gnn-img--dark { display: block; }
+
   .gnn-caption {
     margin-top: var(--space-3);
     font-size: var(--text-sm);
