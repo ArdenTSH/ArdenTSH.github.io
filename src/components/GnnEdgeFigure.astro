@@ -1,47 +1,85 @@
 ---
 // <GnnEdgeFigure> — one event through the edge classifier, on the neutrino page.
 //
-// Three panels: the raw hits on one wire plane, the kNN-8 cluster graph coloured
-// by the network's merge probability, and the same graph carrying the truth
-// labels. Read left to right it is the whole task: hits become Pandora cluster
-// fragments, fragments become candidate edges, and the network decides which
-// edges join fragments of the same particle.
+// Three panels, laid out and labelled the same way as <EventTriptych> above it.
+// The labels are HTML, not baked into the image, which is the point: the centre
+// and right panels are THE SAME GRAPH, one carrying the network's scores and one
+// the truth, and without a caption on each they read as a duplicate.
 //
-// EVERY WORD IS STRIPPED. The source render carried a title, axis labels, tick
-// labels, colourbars and two legends; all of it was cropped to the plot
-// interiors and the legend boxes, which are opaque and hide nothing, painted
-// out. That is what lets the figure sit on the page rather than on a white
-// plate: with no type in it, there is nothing that has to stay dark to be read.
-// The caption below carries what the labels used to say.
+// The source render was a matplotlib figure with a title, axis labels, tick
+// labels, colourbars and two legends on a white ground. All of it is cropped to
+// the plot interiors, with the legend boxes painted out (they are opaque, so
+// nothing is lost under them). With no type left in the image, the white ground
+// can be removed and the ink sits on the island rather than on a white plate.
 //
-// Two variants, swapped on the theme. Both have the white ground removed by
-// un-premultiplying, so the ink sits directly on the island. The dark variant
-// lifts ONLY the near-black cluster nodes to pale; inverting every neutral pixel
-// also inverted the colourmap's own pale centre, and the uncertain edges, which
-// are the interesting ones, disappeared against the page.
+// Two variants per panel, swapped on the theme. The dark one lifts only the
+// near-black cluster nodes; inverting every neutral pixel also inverted the
+// colourmap's own pale centre, and the uncertain edges vanished into the page.
+//
+// All three panels share axis limits in the source, so they are cropped
+// identically and stay comparable.
 //
 // Source: MicroBooNE open data, v5 test event 273, CC νe, from the group's
-// gnn_merge study. Delete the component and the page simply loses the figure.
-const ALT =
-  "Three panels for one simulated neutrino event. Left: the raw hits on one wire " +
-  "plane, coloured by charge. Centre: the cluster graph, with every candidate edge " +
-  "coloured by the network's merge probability, blue for low and red for high. " +
-  "Right: the same graph with the true labels, red where an edge joins fragments of " +
-  "the same particle and blue where it does not.";
+// gnn_merge study. Delete the component and the page loses the figure.
+const PANELS = [
+  {
+    key: "hits",
+    tag: "the hits",
+    desc: "791 hits on one wire plane, coloured by charge",
+    alt: "Raw detector hits on a single wire plane, a sparse diagonal track with scattered background hits.",
+  },
+  {
+    key: "scored",
+    tag: "the network",
+    desc: "910 candidate edges, blue unlikely to red likely",
+    alt: "The cluster graph, with each candidate edge coloured by the network's merge probability, blue for low and red for high.",
+  },
+  {
+    key: "truth",
+    tag: "the truth",
+    desc: "601 edges within a particle, 309 between",
+    alt: "The same cluster graph with true labels, red where an edge joins fragments of the same particle and blue where it does not.",
+  },
+];
 ---
 
 <figure class="gnn">
-  <img class="gnn-img gnn-img--light" src="/images/neutrino/gnn-edge-scores.png"
-       alt={ALT} width="1450" height="601" loading="lazy" decoding="async" />
-  <img class="gnn-img gnn-img--dark" src="/images/neutrino/gnn-edge-scores-dark.png"
-       alt="" aria-hidden="true" width="1450" height="601" loading="lazy" decoding="async" />
+  <div class="gnn-row">
+    {
+      PANELS.map((p) => (
+        <div class="gnn-panel">
+          <div class="gnn-frame">
+            <img
+              class="gnn-img gnn-img--light"
+              src={`/images/neutrino/gnn-${p.key}.png`}
+              alt={p.alt}
+              width="460"
+              height="585"
+              loading="lazy"
+              decoding="async"
+            />
+            <img
+              class="gnn-img gnn-img--dark"
+              src={`/images/neutrino/gnn-${p.key}-dark.png`}
+              alt=""
+              aria-hidden="true"
+              width="460"
+              height="585"
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+          <span class="gnn-tag">{p.tag}</span>
+          <span class="gnn-desc">{p.desc}</span>
+        </div>
+      ))
+    }
+  </div>
   <figcaption class="gnn-caption">
-    One event through the edge classifier. Left, 791 raw hits on a single wire
-    plane. Centre, the same hits grouped into cluster fragments and joined to
-    their nearest neighbours, with each of the 910 candidate edges coloured by
-    the network's merge probability, blue for low and red for high. Right, the
-    truth: 601 edges join fragments of one particle, 309 join different ones. On
-    this view the network reaches an edge F1 of 0.91.
+    One event through the edge classifier. Hits are grouped into cluster
+    fragments and each fragment joined to its nearest neighbours; the network
+    then scores every edge between them. Centre and right are the same graph,
+    scored and true. On this view it reaches an edge F1 of 0.91.
   </figcaption>
 </figure>
 
@@ -49,24 +87,55 @@ const ALT =
   .gnn {
     margin: var(--space-4) 0 0;
     max-width: var(--measure);
-    /* Three wide panels: below this the detail stops being readable. */
-    overflow-x: auto;
+  }
+  .gnn-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-3);
+  }
+  .gnn-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  /* The panel edge is the theme's hairline, so the figure follows the toggle. */
+  .gnn-frame {
+    border: var(--hairline) solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 4px;
+    margin-bottom: 6px;
   }
   .gnn-img {
     display: block;
     width: 100%;
     height: auto;
-    min-width: 460px;
   }
-  /* One variant per theme. The site sets data-theme explicitly, so this follows
+  /* One variant per theme; the site sets data-theme explicitly, so this follows
      the toggle rather than the operating system. */
   .gnn-img--dark { display: none; }
   :global(:root[data-theme="dark"]) .gnn-img--light { display: none; }
   :global(:root[data-theme="dark"]) .gnn-img--dark { display: block; }
 
+  .gnn-tag {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-label);
+    color: var(--accent);
+  }
+  .gnn-desc {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    line-height: var(--leading-snug);
+  }
   .gnn-caption {
     margin-top: var(--space-3);
     font-size: var(--text-sm);
     color: var(--text-secondary);
+  }
+
+  /* Narrow: stack, so each panel stays large enough to read. */
+  @media (max-width: 640px) {
+    .gnn-row { grid-template-columns: 1fr; gap: var(--space-4); }
   }
 </style>
