@@ -28,11 +28,17 @@ import { eden } from "../config/site";
         <p class="eden-actions">
           <a class="eden-action" href={eden.paper.href} download>
             <Icon name="tabler:file-text" aria-hidden="true" />
-            <span>
-              {eden.paper.title}
-              <span class="eden-note">{eden.paper.note}</span>
-            </span>
+            <span>{eden.paper.title}</span>
           </a>
+          {/* The status sits OUTSIDE the download link: it carries a link of its
+              own to the venue, and an anchor cannot nest inside another. */}
+          <span class="eden-note">
+            {eden.paper.status.before}<a
+              href={eden.paper.status.venueHref}
+              target="_blank"
+              rel="noopener"
+            >{eden.paper.status.venue}</a>{eden.paper.status.after}
+          </span>
         </p>
       )
     }
@@ -130,13 +136,15 @@ import { eden } from "../config/site";
   .eden-action {
     align-items: baseline;
   }
-  /* "Preprint, under review" rides under the title rather than beside it, so the
-     title stays one unbroken link target. */
+  /* The status rides under the title rather than beside it, so the title stays
+     one unbroken link target and the venue link inside the status stays its own. */
   .eden-note {
     display: block;
+    margin-top: 2px;
     font-family: var(--font-mono);
     font-size: var(--text-xs);
     letter-spacing: var(--tracking-label);
+    line-height: var(--leading-snug);
     color: var(--text-muted);
   }
   .eden-action :global(svg) {

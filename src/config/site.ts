@@ -97,13 +97,21 @@ export const eden = {
   eyebrow: "What I'm building",
   title: "Eden",
   short: "Eden",
-  // The preprint itself, served from public/papers/. Swap `href` for the arXiv
-  // or proceedings URL once one exists and the local copy can go.
+  // The paper, served from public/papers/. Swap `href` for the arXiv URL once it
+  // exists and the local copy can go; the filename is left alone until then.
   paper: {
     title:
-      "Empirical verificational complexity: a research programme for scalable oversight and steering in autonomous laboratories",
-    note: "Preprint, under review",
+      "Verification Belongs in the Laboratory: Scalable Oversight and Steering for Machine-Generated Science",
     href: "/papers/empirical-verificational-complexity.pdf",
+    // The status line under the title. The venue is a link, so the line is held
+    // as the text either side of it: it renders OUTSIDE the paper's own download
+    // link, because an anchor inside an anchor is invalid.
+    status: {
+      before: "Accepted at the ",
+      venue: "AI for Science workshop (NeurIPS 2026)",
+      venueHref: "https://ai4sciencecommunity.github.io/neurips26.html",
+      after: ", Sydney, December 2026. Longer version on arXiv, link to follow.",
+    },
   },
   // Public artefacts linked from the /eden page header. The layer repository is
   // private; add it here when it opens.
@@ -143,7 +151,7 @@ export const eden = {
       heading: "Alethic complexity",
       body: [
         "Alethic complexity is what it costs to turn what is true into what is known. Most of that cost sits after a result exists, in the observations, the adjudicative work and the trusted code that a verdict on it requires.",
-        "The measurable part carries a narrower name, empirical verificational complexity, which studies how scientific claims are made auditable and how scientific activity can be steered when claims and results become abundant. It asks how a claim can be reduced to independently checkable obligations, what observations and adjudicative work are required to discharge them, and how limited experimental capacity should be directed across testing, replication and retirement. That is the research programme. Eden is that programme built as infrastructure.",
+        "The paper measures the trusted code, the observations in part, and the adjudicative work not yet. Eden builds that measurement as infrastructure.",
       ],
     },
     {
@@ -181,7 +189,7 @@ export const eden = {
     {
       heading: "Results",
       body: [
-        "Working from the evidence deposited with the original claims, the layered architecture reaches all 55 first-stage targets, where the strongest unlayered condition reaches 41. Most of that spread sits in one group that is largely earnable by restating the claim, so the comparison carrying the weight is the 20 targets outside it, where the layer reaches 20 and the strongest unlayered condition reaches 11.",
+        "Most of the 55 first-stage targets sit in one group that is largely earnable by restating the claim. The comparison carrying the weight is the 20 targets outside it, the ones the claim alone cannot reach. There the layer reaches 20; the best unlayered condition, given seven attempts at matched output, reaches 14.",
         "The sharper result is about where verification has to happen. From the evidence available when the claims were made, no verifier reproduces the published adjudication, including the system the benchmark scores against. Granted the one analysis the layer asked for, it reaches that adjudication on all 40 compounds.",
       ],
       parts: [
@@ -195,7 +203,7 @@ export const eden = {
         {
           heading: "Scalable oversight",
           body: [
-            "What must be trusted for a refutation to count is around a thousand lines, standard library only, sharing no code with the layer or with the models that wrote the checks. It holds one predicate per class of evidence, so it grows with the variety of a record rather than its volume, and adding compounds adds none of it. The trusted code needed to adjudicate a fixed share of the record stays flat as the record grows.",
+            "What must be trusted for a refutation to count is around a thousand lines, standard library only, sharing no code with the layer or with the models that wrote the checks. It holds one predicate per class of evidence, so it grows with the variety of a record rather than its volume, and adding compounds adds none of it. The trusted code needed to adjudicate a fixed share of the record grows far more slowly than the record.",
           ],
         },
       ],
@@ -215,7 +223,7 @@ export const eden = {
         {
           heading: "Scalability",
           body: [
-            "The second conjecture is that the flat growth above holds wherever the record comes from: the cost of oversight tracks the variety of a record and not its volume. A domain in which the number of kinds of evidence grows with the number of claims would refute it.",
+            "The second conjecture is that this holds wherever the record comes from: the cost of oversight tracks the variety of a record and not its volume. A domain in which the number of kinds of evidence grows with the number of claims would refute it.",
           ],
         },
         {
