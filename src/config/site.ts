@@ -97,12 +97,13 @@ export const eden = {
   eyebrow: "What I'm building",
   title: "Eden",
   short: "Eden",
-  // The paper, served from public/papers/. Swap `href` for the arXiv URL once it
-  // exists and the local copy can go; the filename is left alone until then.
+  // The paper, served from public/papers/. The filename is what lands in the
+  // reader's downloads, so it carries the term the paper actually uses. Swap
+  // `href` for the arXiv URL once it exists and the local copy can go.
   paper: {
     title:
       "Verification Belongs in the Laboratory: Scalable Oversight and Steering for Machine-Generated Science",
-    href: "/papers/empirical-verificational-complexity.pdf",
+    href: "/papers/alethic-complexity.pdf",
     // The status line under the title. The venue is a link, so the line is held
     // as the text either side of it: it renders OUTSIDE the paper's own download
     // link, because an anchor inside an anchor is invalid.
